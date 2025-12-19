@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 from openni import openni2
-import PySimpleGUI as sg  # Para preguntar al usuario
+import customtkinter as ctk  # Para preguntar al usuario
 import json
 
 # Función para mostrar un mensaje en pantalla
@@ -108,6 +108,7 @@ def calibrar_mesa_y_detectar_toques(device):
 
     # Crear una ventana para la proyección
     cv2.namedWindow("Proyeccion", cv2.WINDOW_NORMAL)
+    cv2.moveWindow("Proyeccion", 1920, 0)
     cv2.setWindowProperty("Proyeccion", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     # Iniciar los streams de color y profundidad
@@ -199,12 +200,38 @@ def calibrar_mesa_y_detectar_toques(device):
         print("Iniciando detección de toques...")
 
         # Preguntar al usuario si desea proceder con la detección de toques
-        layout = [[sg.Text('¿Desea proceder con la detección de toques?')],
-                  [sg.Button('Sí'), sg.Button('No')]]
-        window = sg.Window('Verificación de Detección', layout)
-        event, values = window.read()
-        window.close()
-        if event == 'Sí':
+        user_response = None
+        
+        def on_yes():
+            nonlocal user_response
+            user_response = 'Sí'
+            app.destroy()
+            
+        def on_no():
+            nonlocal user_response
+            user_response = 'No'
+            app.destroy()
+
+        ctk.set_appearance_mode("Dark")
+        app = ctk.CTk()
+        app.title('Verificación de Detección')
+        app.geometry("400x200")
+        
+        label = ctk.CTkLabel(app, text='¿Desea proceder con la detección de toques?', font=("Arial", 16))
+        label.pack(pady=20)
+        
+        button_frame = ctk.CTkFrame(app, fg_color="transparent")
+        button_frame.pack(pady=10)
+        
+        btn_yes = ctk.CTkButton(button_frame, text='Sí', command=on_yes)
+        btn_yes.pack(side="left", padx=10)
+        
+        btn_no = ctk.CTkButton(button_frame, text='No', command=on_no)
+        btn_no.pack(side="left", padx=10)
+        
+        app.mainloop()
+
+        if user_response == 'Sí':
             # Calcular dmax_map
             dmax_map = dmax_map - 4
             dmin_map = dmax_map - 10

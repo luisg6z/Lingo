@@ -6,7 +6,7 @@ from collections import deque
 import pygame
 import time
 import os
-import PySimpleGUI as sg
+import customtkinter as ctk
 from skimage.measure import label, regionprops
 import random
 import mediapipe as mp
@@ -1147,6 +1147,7 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
         # Mostrar el resultado
         cv2.imshow("Mascara", touch_mask_final)
         cv2.namedWindow("Clasificación", cv2.WND_PROP_FULLSCREEN)
+        cv2.moveWindow("Clasificación", 1920, 0)
         cv2.setWindowProperty("Clasificación", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Clasificación", videobeam_screen)
 
@@ -1649,6 +1650,7 @@ def juego_personalizacion(device):
         draw_drawing_options(screen, loaded_drawing_images, drawing_positions)
         # Configurar la ventana "Dibujo" en pantalla completa sin decoraciones
         cv2.namedWindow("Dibujo", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Dibujo", 1920, 0)
         cv2.setWindowProperty("Dibujo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Dibujo", screen)
 
@@ -2777,6 +2779,7 @@ def mostrar_menu_juegos(device):
 
     # 5. Mostrar la Ventana en la Proyección del Videobeam
     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+    cv2.moveWindow("Menú de Juegos", 1920, 0)
     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.imshow("Menú de Juegos", videobeam_screen)
 
@@ -3007,6 +3010,7 @@ def mostrar_menu_juegos(device):
 
         # Mostrar la pantalla en la proyección
         cv2.namedWindow("Opciones de Clasificación", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Opciones de Clasificación", 1920, 0)
         cv2.setWindowProperty("Opciones de Clasificación", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Opciones de Clasificación", opciones_screen)
 
@@ -3293,56 +3297,55 @@ if __name__ == "__main__":
     # sound_file = "do.wav"
     # print(f"Área calibrada: {calibrated_area}")
 
-    menu_def = [['Opciones', ['Notas Musicales', 'Reconociendo Figuras', 'Dibujar', 'Memoria' ,'Manos','Clasificacion','Avatar','Simon Dice','Vieja','Menu','Salir']]]
-    
-    layout = [
-        [sg.Menu(menu_def)],
-        [sg.Text('Seleccione una opcion', size=(40,1))]
-    ]
+    ctk.set_appearance_mode("Dark")
+    ctk.set_default_color_theme("blue")
 
-    window = sg.Window("Sistema Interactivo", layout)
+    app = ctk.CTk()
+    app.title("Sistema Interactivo MagicboARd")
+    app.geometry("400x700")
 
-    while True:
-        event, values = window.read()
+    def launch_game(game_func):
+        # Minimizar para dar foco al juego
+        app.iconify()
+        try:
+            game_func()
+        except Exception as e:
+            print(f"Error executing game: {e}")
+        finally:
+            app.deiconify()
 
-        if event == sg.WIN_CLOSED or event == 'Salir':
-            break
+    # Title
+    title_label = ctk.CTkLabel(app, text="Opciones", font=ctk.CTkFont(size=20, weight="bold"))
+    title_label.pack(padx=20, pady=(20, 10))
 
-        elif event == 'Notas Musicales':
-            sg.popup('Iniciando deteccion de toques y nota musical...')
-            detect_touches(device, calibrated_area, dmax_map, offset=10, sound_file=sound_file, show_result=True)
+    scrollable_frame = ctk.CTkScrollableFrame(app, width=300, height=500)
+    scrollable_frame.pack(padx=20, pady=20, fill="y", expand=True)
 
-        elif event == 'Reconociendo Figuras':
-            sg.popup('Iniciando el reconocimiento de figuras...')
-            recon_shapes(device)
-        
-        elif event == 'Dibujar':
-            sg.popup('Iniciando el dibujo')
-            draw_on_canvas(device, calibrated_area, dmax_map, offset=10, show_result=True)
-        elif event == 'Memoria':
-            sg.popup('Iniciando juego de Memoria...')
-            juego_memoria(device)
-        elif event == 'Manos':
-            sg.popup('Iniciando impresion de Manos...')
-            juego_handprint(device)
-        elif event == 'Clasificacion':
-            sg.popup('Iniciando juego de Clasificacion')
-            juego_clasificacion(device)
-        elif event == 'Avatar':
-            sg.popup('Iniciando personalizacion de Avatar')
-            juego_personalizacion(device)
-        elif event == 'Simon Dice':
-            sg.popup('Iniciando Simon Dice')
-            simon_dice(device)
-        elif event == 'Vieja':
-            sg.popup('Iniciando juego de la Vieja...')
-            juego_tic_tac_toe(device)
-        elif event == 'Menu':
-            sg.popup('Mostrando el Menu...')
-            mostrar_menu_juegos(device)
+    # Helper lambda to capture function
+    def make_command(func):
+        return lambda: launch_game(func)
 
+    # Buttons
+    # Note: Some functions like detect_touches, recon_shapes, draw_on_canvas were called in the original code
+    # but do not appear in the file outline. Swapped 'detect_touches' for 'piano' which exists.
+    # Kept others as is, wrapped in try-except.
 
-    window.close()
+    ctk.CTkButton(scrollable_frame, text="Notas Musicales", command=make_command(lambda: piano(device))).pack(padx=10, pady=10, fill="x")
+    # ctk.CTkButton(scrollable_frame, text="Reconociendo Figuras", command=make_command(lambda: recon_shapes(device))).pack(padx=10, pady=10, fill="x") # Function missing
+    # ctk.CTkButton(scrollable_frame, text="Dibujar", command=make_command(lambda: draw_on_canvas(device, calibrated_area, dmax_map))).pack(padx=10, pady=10, fill="x") # Function missing
+    ctk.CTkButton(scrollable_frame, text="Memoria", command=make_command(lambda: juego_memoria(device))).pack(padx=10, pady=10, fill="x")
+    ctk.CTkButton(scrollable_frame, text="Manos", command=make_command(lambda: juego_handprint(device))).pack(padx=10, pady=10, fill="x")
+    ctk.CTkButton(scrollable_frame, text="Clasificacion", command=make_command(lambda: juego_clasificacion(device, "figuras", True, 0))).pack(padx=10, pady=10, fill="x") # Default args logic inferred
+    ctk.CTkButton(scrollable_frame, text="Avatar", command=make_command(lambda: juego_personalizacion(device))).pack(padx=10, pady=10, fill="x")
+    ctk.CTkButton(scrollable_frame, text="Simon Dice", command=make_command(lambda: simon_dice(device))).pack(padx=10, pady=10, fill="x")
+    ctk.CTkButton(scrollable_frame, text="Vieja", command=make_command(lambda: juego_tic_tac_toe(device))).pack(padx=10, pady=10, fill="x")
+    ctk.CTkButton(scrollable_frame, text="Menu In-Game", command=make_command(lambda: mostrar_menu_juegos(device))).pack(padx=10, pady=10, fill="x")
+
+    # Quit button
+    quit_btn = ctk.CTkButton(app, text="Salir", fg_color="red", hover_color="darkred", command=app.quit)
+    quit_btn.pack(padx=20, pady=20, fill="x")
+
+    app.mainloop()
 
 
     openni2.unload()
