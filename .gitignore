@@ -1,1 +1,4 @@
 rgb_display.py
+venv/
+__pycache__/
+.venv/

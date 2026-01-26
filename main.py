@@ -13,14 +13,87 @@ import mediapipe as mp
 import json
 import math
 import threading
+from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
+from absurdos_seleccion import mostrar_seleccion_absurdos
+
+def load_and_validate_dmax_map(coordenadas):
+    """
+    Carga y valida el archivo dmax_map.txt contra las coordenadas proporcionadas.
+    
+    Args:
+        coordenadas: Diccionario con las coordenadas de calibración
+    
+    Returns:
+        tuple: (dmax_map_reshaped, w, h) si es exitoso, (None, None, None) si hay error
+    """
+    try:
+        # Cargar el archivo dmax_map.txt
+        dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
+    except FileNotFoundError:
+        print("ERROR: No se encontró el archivo 'config/dmax_map.txt'.")
+        print("Por favor, ejecuta la calibración primero.")
+        return None, None, None
+    except ValueError as e:
+        print(f"ERROR: El archivo 'dmax_map.txt' tiene un formato inválido: {e}")
+        return None, None, None
+    
+    # Calcular dimensiones esperadas
+    xw_min = coordenadas.get("xw_min", 0)
+    xw_max = coordenadas.get("xw_max", 0)
+    yw_min = coordenadas.get("yw_min", 0)
+    yw_max = coordenadas.get("yw_max", 0)
+    
+    w = xw_max - xw_min
+    h = yw_max - yw_min
+    
+    expected_size = w * h
+    actual_size = dmax_map.size
+    
+    # Validar dimensiones
+    if actual_size != expected_size:
+        print("=" * 70)
+        print("ERROR: Incompatibilidad de dimensiones entre dmax_map.txt y coordenadas")
+        print("=" * 70)
+        print(f"Dimensiones esperadas: {w} x {h} = {expected_size} elementos")
+        print(f"Dimensiones del archivo: {actual_size} elementos")
+        
+        # Intentar encontrar dimensiones posibles
+        posibles_dimensiones = []
+        for i in range(300, 500):
+            if actual_size % i == 0:
+                j = actual_size // i
+                posibles_dimensiones.append((i, j))
+        
+        if posibles_dimensiones:
+            print(f"\nDimensiones posibles del archivo:")
+            for dim in posibles_dimensiones[:3]:
+                print(f"  - {dim[0]} x {dim[1]} o {dim[1]} x {dim[0]}")
+        
+        print("\nSOLUCIÓN:")
+        print("1. Ejecuta la calibración para regenerar dmax_map.txt con las dimensiones correctas:")
+        print("   python calibrate_area.py")
+        print("\n2. O ajusta las coordenadas en 'ultima_configuracion_coordenadas.json'")
+        print("   para que coincidan con las dimensiones del archivo actual.")
+        print("=" * 70)
+        return None, None, None
+    
+    try:
+        # Hacer reshape
+        dmax_map_reshaped = dmax_map.reshape((h, w))
+        return dmax_map_reshaped, w, h
+    except ValueError as e:
+        print(f"ERROR al hacer reshape del dmax_map: {e}")
+        return None, None, None
 
 def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_contour_area=20000):
-    # Cargar el mapa dmax desde el archivo
-    dmax_map = np.loadtxt("./config/dmax_map.txt", dtype=int)
-
     # Cargar las coordenadas desde el archivo JSON
     with open("config/ultima_configuracion_coordenadas.json", "r") as file:
         config = json.load(file)
+
+    # Cargar y validar dmax_map
+    dmax_map, w, h = load_and_validate_dmax_map(config)
+    if dmax_map is None:
+        return
 
     # Asignar las coordenadas del viewport y la ventana
     xv_min = config['xv_min']
@@ -31,13 +104,6 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
     xw_max = config['xw_max']
     yw_min = config['yw_min']
     yw_max = config['yw_max']
-
-    # Dimensiones del área de trabajo
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-
-    # Reajustar el dmax_map a las dimensiones de trabajo
-    dmax_map = dmax_map.reshape((h, w))
 
     # Cálculo de los factores de escala para el mapeo de ventana a viewport
     sx = float(xv_max - xv_min) / (xw_max - xw_min)
@@ -693,15 +759,13 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar el archivo dmax_map.txt
-    dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
+    # Cargar y validar dmax_map
+    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    if dmax_map is None:
+        return
 
-    # Dimensiones del área de trabajo
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-
-    # Reajustar el dmax_map a las dimensiones de trabajo
-    dmax_map = dmax_map.reshape((h, w)) - 7
+    # Ajustar el dmax_map (restar offset)
+    dmax_map = dmax_map - 7
     dmin_map = dmax_map - 50
 
     # Tamaño de la pantalla del videobeam (viewport)
@@ -1169,13 +1233,14 @@ def juego_handprint(device, offset=10):
     view_height = 800
     videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)  # Pantalla negra
 
-    # Leer el mapa dmax desde el archivo
-    with open("config/dmax_map.txt", "r") as file:
-        dmax_map = np.loadtxt(file, dtype=int)
-
     # Cargar las coordenadas de calibración desde el archivo JSON
     with open("config/ultima_configuracion_coordenadas.json", "r") as file:
         coordenadas = json.load(file)
+
+    # Cargar y validar dmax_map
+    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    if dmax_map is None:
+        return
 
     xw_min = coordenadas["xw_min"]
     xw_max = coordenadas["xw_max"]
@@ -1185,13 +1250,6 @@ def juego_handprint(device, offset=10):
     xv_max = coordenadas["xv_max"]
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
-
-    # Suponiendo que conoces las dimensiones originales (h, w)
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-    print(f"{w} * {h} = {w * h} ")
-    
-    dmax_map = dmax_map.reshape((h, w))
 
     # Ajuste del rango de detección de profundidad
     dmax_map = dmax_map - 7
@@ -1355,6 +1413,11 @@ def juego_personalizacion(device):
     with open("config/ultima_configuracion_coordenadas.json", "r") as file:
         coordenadas = json.load(file)
 
+    # Cargar y validar dmax_map
+    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    if dmax_map is None:
+        return
+
     xw_min = coordenadas["xw_min"]
     xw_max = coordenadas["xw_max"]
     yw_min = coordenadas["yw_min"]
@@ -1364,15 +1427,8 @@ def juego_personalizacion(device):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar el archivo dmax_map.txt
-    dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
-
-    # Dimensiones del área de trabajo
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-
-    # Reajustar el dmax_map a las dimensiones de trabajo
-    dmax_map = dmax_map.reshape((h, w)) - 7
+    # Ajustar el dmax_map (restar offset)
+    dmax_map = dmax_map - 7
     dmin_map = dmax_map - 15
 
     # Tamaño de la pantalla del videobeam (viewport)
@@ -1805,6 +1861,11 @@ def simon_dice(device):
     with open("config/ultima_configuracion_coordenadas.json", "r") as file:
         coordenadas = json.load(file)
 
+    # Cargar y validar dmax_map
+    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    if dmax_map is None:
+        return
+
     xw_min = coordenadas["xw_min"]
     xw_max = coordenadas["xw_max"]
     yw_min = coordenadas["yw_min"]
@@ -1814,15 +1875,8 @@ def simon_dice(device):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar el archivo dmax_map.txt
-    dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
-
-    # Dimensiones del área de trabajo
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-
-    # Reajustar el dmax_map a las dimensiones de trabajo
-    dmax_map = dmax_map.reshape((h, w)) - 5
+    # Ajustar el dmax_map (restar offset)
+    dmax_map = dmax_map - 5
     dmin_map = dmax_map - 7
 
     # Preguntar por el número de grupo
@@ -2652,9 +2706,6 @@ def mostrar_menu_juegos(device):
     pygame.init()
     pygame.mixer.init()
 
-    # Desplazamiento vertical (hacia arriba)
-    vertical_offset = -50  # Cambiar este valor para ajustar el desplazamiento hacia arriba
-
     # 1. Cargar Configuraciones
     try:
         with open("config/ultima_configuracion_coordenadas.json", "r") as file:
@@ -2672,110 +2723,352 @@ def mostrar_menu_juegos(device):
     yw_max = coordenadas["yw_max"]
     xv_min = coordenadas["xv_min"]
     xv_max = coordenadas["xv_max"]
-    yv_min = coordenadas["yv_min"] + vertical_offset  # Aplicar desplazamiento vertical
-    yv_max = coordenadas["yv_max"] + vertical_offset  # Aplicar desplazamiento vertical
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
 
-    # Cargar el archivo dmax_map.txt
-    try:
-        dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
-    except FileNotFoundError:
-        print("Error: No se encontró el archivo 'dmax_map.txt'.")
-        return
-    except ValueError:
-        print("Error: El archivo 'dmax_map.txt' tiene un formato inválido.")
-        return
-
-    # Dimensiones del área de trabajo
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-
-    # Reajustar el dmax_map a las dimensiones de trabajo
-    try:
-        dmax_map = dmax_map.reshape((h, w)) - 5
+    # Cargar y validar dmax_map (opcional - solo necesario para detección de toques)
+    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    dmax_map_available = dmax_map is not None
+    
+    if dmax_map_available:
+        # Ajustar el dmax_map (restar offset)
+        dmax_map = dmax_map - 5
         dmin_map = dmax_map - 7
-    except ValueError:
-        print("Error: Las dimensiones de 'dmax_map.txt' no coinciden con el área de trabajo.")
-        return
+    else:
+        print("\n[ADVERTENCIA] No se pudo cargar dmax_map. El menú se mostrará pero la detección de toques no funcionará.")
+        print("Ejecuta 'python calibrate_area.py' o 'python calibrate_area_mejorado.py' para calibrar.\n")
+        dmax_map = None
+        dmin_map = None
 
     # Tamaño de la pantalla del videobeam (viewport)
     view_width = 1280
     view_height = 800
 
-    # Crear una pantalla negra para el videobeam
+    # Función auxiliar para dibujar el logo
+    def draw_logo(screen):
+        logo_loaded_local = False
+        logo_image_local = None
+        
+        try:
+            # Intentar cargar como PNG primero
+            if os.path.exists("images/logo.png"):
+                logo_image_local = cv2.imread("images/logo.png", cv2.IMREAD_UNCHANGED)
+                if logo_image_local is not None:
+                    logo_loaded_local = True
+            # Intentar cargar SVG usando pygame
+            elif os.path.exists("images/logo.svg"):
+                try:
+                    logo_surface = pygame.image.load("images/logo.svg")
+                    logo_string = pygame.image.tostring(logo_surface, "RGBA")
+                    logo_np = np.frombuffer(logo_string, np.uint8)
+                    logo_image_local = logo_np.reshape((logo_surface.get_height(), logo_surface.get_width(), 4))
+                    logo_image_local = cv2.cvtColor(logo_image_local, cv2.COLOR_RGBA2BGRA)
+                    logo_loaded_local = True
+                except Exception:
+                    logo_loaded_local = False
+        except Exception:
+            logo_loaded_local = False
+        
+        if logo_loaded_local and logo_image_local is not None:
+            logo_height = 120
+            if len(logo_image_local.shape) == 3:
+                original_height, original_width = logo_image_local.shape[:2]
+            else:
+                original_height, original_width = logo_image_local.shape[0], logo_image_local.shape[1]
+            
+            aspect_ratio = original_width / original_height
+            logo_width = int(logo_height * aspect_ratio)
+            logo_resized = cv2.resize(logo_image_local, (logo_width, logo_height), interpolation=cv2.INTER_AREA)
+            logo_x = (view_width - logo_width) // 2
+            logo_y = 30
+            
+            if logo_x >= 0 and logo_y >= 0 and logo_x + logo_width <= view_width and logo_y + logo_height <= view_height:
+                if len(logo_resized.shape) == 3 and logo_resized.shape[2] == 4:
+                    alpha = logo_resized[:, :, 3] / 255.0
+                    for c in range(3):
+                        screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c] = (
+                            alpha * logo_resized[:, :, c] + (1 - alpha) * screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c]
+                        )
+                elif len(logo_resized.shape) == 3:
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_resized[:, :, :3]
+                else:
+                    logo_bgr = cv2.cvtColor(logo_resized, cv2.COLOR_GRAY2BGR)
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_bgr
+            return True
+        else:
+            # Dibujar texto como fallback
+            logo_text = "MagicboARd"
+            font = cv2.FONT_HERSHEY_DUPLEX
+            font_scale = 2.5
+            thickness = 4
+            text_size, _ = cv2.getTextSize(logo_text, font, font_scale, thickness)
+            text_x = (view_width - text_size[0]) // 2
+            text_y = 80
+            cv2.putText(screen, logo_text, (text_x + 3, text_y + 3), 
+                       font, font_scale, (0, 0, 0), thickness + 2)
+            cv2.putText(screen, logo_text, (text_x, text_y), 
+                       font, font_scale, (0, 255, 255), thickness)
+            return False
+    
+    # Crear fondo colorido con degradado para niños
     videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de colores pastel (azul a morado a rosa)
+    for y in range(view_height):
+        ratio = y / view_height
+        # Degradado de azul claro a morado a rosa
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        videobeam_screen[y, :] = [b, g, r]  # BGR
+    
+    # Dibujar el logo usando la función auxiliar
+    logo_loaded = draw_logo(videobeam_screen)
 
-    # 2. Cargar Imágenes de Juegos
-    games_images = {
-        "La Vieja": "./images/games/tictactoe.png",
-        "Simon Dice": "./images/games/simon.png",
-        "Memoria": "./images/games/memory.jpg",
-        "Clasificacion": "./images/games/classification.png",
-        "Avatares": "./images/games/avatar.png",
-        "Mano": "./images/games/handprint.jpg",
-        "Piano": "./images/games/piano.jpg"
-    }
-
-    loaded_game_images = {}
-    for name, path in games_images.items():
-        if not os.path.exists(path):
-            print(f"Error: No se pudo cargar el juego '{name}' desde {path}")
-            continue
-
-        image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-        if image is None:
-            print(f"Error: No se pudo cargar la imagen del juego '{name}'.")
-            continue
-
-        # Redimensionar las imágenes a un tamaño uniforme para la selección
-        resized_image = cv2.resize(image, (150, 150), interpolation=cv2.INTER_AREA)
-        loaded_game_images[name] = resized_image
-
-    # 3. Calcular Posiciones de los Juegos
-    num_games = len(loaded_game_images)
-    cols = 4  # Máximo de 3 columnas
-    rows = (num_games + cols - 1) // cols  # Calcular filas necesarias
-    padding_x = 50
-    padding_y = 50
-    image_size = 150
-    spacing_x = (xv_max - xv_min - 2 * padding_x - cols * image_size) // (cols - 1) if cols > 1 else 0
-    spacing_y = (yv_max - yv_min - 2 * padding_y - rows * image_size) // (rows - 1) if rows > 1 else 0
-
+    # 2. Definir los 3 juegos ficticios (sin acentos en los nombres)
+    juegos = [
+        {
+            "nombre": "Juego de Clasificacion",
+            "color": (100, 200, 255),  # Azul claro (BGR)
+            "descripcion": "Clasifica objetos",
+            "icono": "📦",
+            "imagen": "images/LogoClasificacion.png"  # Ruta de la imagen del logo
+        },
+        {
+            "nombre": "Absurdos Logicos",
+            "color": (100, 255, 150),  # Verde claro (BGR)
+            "descripcion": "Encuentra lo absurdo",
+            "icono": "🤔",
+            "imagen": "images/LogoAbsurdosVisuales.png"  # Ruta de la imagen del logo
+        },
+        {
+            "nombre": "Historias",
+            "color": (255, 150, 200),  # Rosa claro (BGR)
+            "descripcion": "Crea historias",
+            "icono": "📚",
+            "imagen": "images/LogoHistoria.png"  # Ruta de la imagen del logo
+        }
+    ]
+    
+    # Cargar imágenes de los juegos si existen
+    juego_images = {}
+    for juego in juegos:
+        if "imagen" in juego and os.path.exists(juego["imagen"]):
+            img = cv2.imread(juego["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                juego_images[juego["nombre"]] = img
+                print(f"✓ Imagen cargada para {juego['nombre']}: {juego['imagen']}")
+            else:
+                print(f"⚠ No se pudo cargar la imagen para {juego['nombre']}: {juego['imagen']}")
+    
+    # 3. Calcular posiciones de las cards (centradas verticalmente)
+    card_width = 320
+    card_height = 400
+    card_spacing = 50
+    total_cards_width = len(juegos) * card_width + (len(juegos) - 1) * card_spacing
+    start_x = (view_width - total_cards_width) // 2
+    start_y = 200  # Posición vertical para las cards
+    
     game_positions = {}
-    idx = 0
-    for row in range(rows):
-        for col in range(cols):
-            if idx >= num_games:
-                break
-            name = list(loaded_game_images.keys())[idx]
-            x = xv_min + padding_x + col * (image_size + spacing_x)
-            y = yv_min + padding_y + row * (image_size + spacing_y)
-            game_positions[name] = (x, y)
-            idx += 1
-
-    # 4. Dibujar Opciones en la Pantalla
-    def draw_game_options(screen, loaded_game_images, game_positions):
-        for name, (x, y) in game_positions.items():
-            image = loaded_game_images[name]
-            h, w = image.shape[:2]
-            # Insertar la imagen en el videobeam_screen
-            screen[y:y+h, x:x+w] = image[:, :, :3]  # Ignorar el canal alfa si existe
-
-            # Dibujar un rectángulo alrededor de la imagen para indicar selección
-            cv2.rectangle(screen, (x, y), (x + w, y + h), (255, 255, 255), 2)
-
-            # Dibujar el nombre del juego debajo de la imagen
-            texto = name
-            fuente = cv2.FONT_HERSHEY_SIMPLEX
-            escala_fuente = 0.6
-            color_texto = (255, 255, 255)  # Blanco
-            grosor_texto = 2
-            tamaño_texto, _ = cv2.getTextSize(texto, fuente, escala_fuente, grosor_texto)
-            text_x = x + (w - tamaño_texto[0]) // 2
-            text_y = y + h + 25  # Espacio debajo de la imagen
-            cv2.putText(screen, texto, (text_x, text_y), fuente, escala_fuente, color_texto, grosor_texto)
-
-    # Dibujar las opciones de juego en la pantalla
-    draw_game_options(videobeam_screen, loaded_game_images, game_positions)
+    for idx, juego in enumerate(juegos):
+        x = start_x + idx * (card_width + card_spacing)
+        y = start_y
+        game_positions[juego["nombre"]] = {
+            'x': x,
+            'y': y,
+            'width': card_width,
+            'height': card_height,
+            'color': juego["color"],
+            'descripcion': juego["descripcion"],
+            'icono': juego["icono"],
+            'imagen': juego_images.get(juego["nombre"])  # Imagen cargada si existe
+        }
+    
+    # 4. Función para dibujar las cards de juegos
+    def draw_game_cards(screen, game_positions, elevated_card=None):
+        """
+        Dibuja las cards de juegos en la pantalla.
+        
+        Args:
+            screen: La imagen donde dibujar
+            game_positions: Diccionario con las posiciones de las cards
+            elevated_card: Nombre de la card que debe estar elevada (None si ninguna)
+        """
+        for nombre, pos in game_positions.items():
+            x, y = pos['x'], pos['y']
+            w, h = pos['width'], pos['height']
+            color = pos['color']
+            
+            # Efecto de elevación si esta card está seleccionada
+            elevation_offset = 0
+            scale_factor = 1.0
+            shadow_offset_base = 8
+            
+            if elevated_card == nombre:
+                elevation_offset = -20  # Mover hacia arriba
+                scale_factor = 1.05  # Aumentar tamaño ligeramente
+                shadow_offset_base = 15  # Sombra más grande para mayor profundidad
+                # Hacer el color más brillante cuando está elevada
+                color = tuple(min(255, int(c * 1.15)) for c in color)
+            
+            # Aplicar escala
+            w_scaled = int(w * scale_factor)
+            h_scaled = int(h * scale_factor)
+            x_scaled = x - (w_scaled - w) // 2  # Centrar el escalado
+            y_scaled = y + elevation_offset - (h_scaled - h) // 2
+            
+            # Asegurar que no se salga de los límites
+            x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+            y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+            
+            # Dibujar sombra (más grande si está elevada)
+            shadow_offset = int(shadow_offset_base * scale_factor)
+            shadow_color = (50, 50, 50)
+            cv2.rectangle(screen, (x_scaled + shadow_offset, y_scaled + shadow_offset), 
+                        (x_scaled + w_scaled + shadow_offset, y_scaled + h_scaled + shadow_offset), 
+                        shadow_color, -1)
+            
+            # Verificar si esta card tiene imagen para usar como fondo completo
+            if 'imagen' in pos and pos['imagen'] is not None:
+                # Usar la imagen como fondo completo de la card
+                img = pos['imagen'].copy()
+                
+                # Redimensionar la imagen para que llene completamente la card
+                img_resized = cv2.resize(img, (w_scaled, h_scaled), interpolation=cv2.INTER_AREA)
+                
+                # Verificar límites antes de dibujar
+                if x_scaled >= 0 and y_scaled >= 0 and x_scaled + w_scaled <= screen.shape[1] and y_scaled + h_scaled <= screen.shape[0]:
+                    # Si la imagen tiene canal alfa (transparencia)
+                    if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                        # Extraer canal alfa
+                        alpha = img_resized[:, :, 3] / 255.0
+                        # Convertir BGR de la imagen
+                        img_bgr = img_resized[:, :, :3]
+                        # Mezclar con el fondo
+                        for c in range(3):
+                            screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c] = (
+                                alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c]
+                            )
+                    else:
+                        # Sin canal alfa, copiar directamente
+                        screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled] = img_resized[:, :, :3]
+                
+                # No dibujar nombre ni descripción si la imagen ya los incluye
+                # (Opcional: puedes comentar estas líneas si quieres que NO se muestren el nombre y descripción)
+                continue  # Saltar el resto del dibujado para esta card si tiene imagen
+            else:
+                # Comportamiento original para cards sin imagen
+                # Dibujar card con bordes redondeados (simulado con rectángulos)
+                # Fondo de la card
+                cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), color, -1)
+                
+                # Borde de la card (más oscuro, más grueso si está elevada)
+                border_color = tuple(max(0, c - 30) for c in color)
+                border_thickness = 7 if elevated_card == nombre else 5
+                cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+                
+                # Dibujar efecto de brillo en la parte superior (más brillante si está elevada)
+                highlight_boost = 60 if elevated_card == nombre else 40
+                highlight_color = tuple(min(255, c + highlight_boost) for c in color)
+                highlight_margin = int(10 * scale_factor)
+                cv2.rectangle(screen, (x_scaled + highlight_margin, y_scaled + highlight_margin), 
+                            (x_scaled + w_scaled - highlight_margin, y_scaled + int(50 * scale_factor) + highlight_margin), 
+                            highlight_color, -1)
+                
+                # Ajustar posiciones de texto según el escalado
+                icon_x_offset = (w_scaled - w) // 2
+                icon_y_offset = (h_scaled - h) // 2
+                
+                # Dibujar icono emoji (comportamiento original)
+                icono = pos['icono']
+                font_icon = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale_icon = 3.0 * scale_factor  # Escalar el icono también
+                thickness_icon = int(3 * scale_factor)
+                icon_size, _ = cv2.getTextSize(icono, font_icon, font_scale_icon, thickness_icon)
+                icon_x = x_scaled + (w_scaled - icon_size[0]) // 2
+                icon_y = y_scaled + int(100 * scale_factor) + icon_y_offset
+                cv2.putText(screen, icono, (icon_x, icon_y), font_icon, font_scale_icon, (255, 255, 255), thickness_icon)
+            
+            # Dibujar nombre del juego (nombre es la clave del diccionario)
+            # Ajustar el texto para que quepa dentro de la card
+            nombre_texto = nombre
+            font_nombre = cv2.FONT_HERSHEY_DUPLEX
+            font_scale_nombre = 0.9
+            thickness_nombre = 2
+            
+            # Calcular el ancho disponible (con margen de 20 píxeles a cada lado)
+            available_width = w - 40
+            
+            # Verificar si el texto cabe, si no, reducir el tamaño de fuente
+            nombre_size, _ = cv2.getTextSize(nombre_texto, font_nombre, font_scale_nombre, thickness_nombre)
+            while nombre_size[0] > available_width and font_scale_nombre > 0.5:
+                font_scale_nombre -= 0.1
+                nombre_size, _ = cv2.getTextSize(nombre_texto, font_nombre, font_scale_nombre, thickness_nombre)
+            
+            # Si aún no cabe, dividir en múltiples líneas
+            if nombre_size[0] > available_width:
+                # Dividir el texto en palabras y crear líneas
+                palabras = nombre_texto.split()
+                lineas = []
+                linea_actual = ""
+                for palabra in palabras:
+                    test_linea = linea_actual + (" " if linea_actual else "") + palabra
+                    test_size, _ = cv2.getTextSize(test_linea, font_nombre, font_scale_nombre, thickness_nombre)
+                    if test_size[0] <= available_width:
+                        linea_actual = test_linea
+                    else:
+                        if linea_actual:
+                            lineas.append(linea_actual)
+                        linea_actual = palabra
+                if linea_actual:
+                    lineas.append(linea_actual)
+                
+                # Dibujar cada línea centrada
+                line_height = nombre_size[1] + 5
+                start_y = y_scaled + int(180 * scale_factor) + icon_y_offset - (len(lineas) - 1) * line_height // 2
+                for i, linea in enumerate(lineas):
+                    linea_size, _ = cv2.getTextSize(linea, font_nombre, font_scale_nombre, thickness_nombre)
+                    linea_x = x_scaled + (w_scaled - linea_size[0]) // 2
+                    linea_y = start_y + i * line_height
+                    # Sombra del texto
+                    cv2.putText(screen, linea, (linea_x + 2, linea_y + 2), 
+                               font_nombre, font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
+                    # Texto principal
+                    cv2.putText(screen, linea, (linea_x, linea_y), 
+                               font_nombre, font_scale_nombre, (255, 255, 255), thickness_nombre)
+            else:
+                # El texto cabe en una línea, dibujarlo normalmente
+                nombre_x = x_scaled + (w_scaled - nombre_size[0]) // 2
+                nombre_y = y_scaled + int(180 * scale_factor) + icon_y_offset
+                # Sombra del texto
+                cv2.putText(screen, nombre_texto, (nombre_x + 2, nombre_y + 2), 
+                           font_nombre, font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
+                # Texto principal
+                cv2.putText(screen, nombre_texto, (nombre_x, nombre_y), 
+                           font_nombre, font_scale_nombre, (255, 255, 255), thickness_nombre)
+            
+            # Dibujar descripción (ajustar si es muy larga)
+            desc_texto = pos['descripcion']
+            font_desc = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale_desc = 0.7 * scale_factor
+            thickness_desc = int(2 * scale_factor)
+            
+            # Calcular el ancho disponible (con margen de 20 píxeles a cada lado)
+            available_width_desc = int(w_scaled - 40)
+            
+            # Verificar si el texto cabe, si no, reducir el tamaño de fuente
+            desc_size, _ = cv2.getTextSize(desc_texto, font_desc, font_scale_desc, thickness_desc)
+            while desc_size[0] > available_width_desc and font_scale_desc > 0.4:
+                font_scale_desc -= 0.05
+                desc_size, _ = cv2.getTextSize(desc_texto, font_desc, font_scale_desc, thickness_desc)
+            
+            desc_x = x_scaled + (w_scaled - desc_size[0]) // 2
+            desc_y = y_scaled + int(220 * scale_factor) + icon_y_offset
+            cv2.putText(screen, desc_texto, (desc_x, desc_y), 
+                       font_desc, font_scale_desc, (255, 255, 255), thickness_desc)
+    
+    # Dibujar las cards en la pantalla
+    draw_game_cards(videobeam_screen, game_positions)
 
     # 5. Mostrar la Ventana en la Proyección del Videobeam
     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
@@ -2783,66 +3076,273 @@ def mostrar_menu_juegos(device):
     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.imshow("Menú de Juegos", videobeam_screen)
 
-    # 6. Definir las Áreas de Selección
-    areas_opciones = {}
-    for name, (x, y) in game_positions.items():
-        areas_opciones[name] = {
-            'x1': x,
-            'y1': y,
-            'x2': x + image_size,
-            'y2': y + image_size
-        }
-
-    # Funciones de los juegos
-    def iniciar_juego_tictactoe():
-        print("Iniciando Tic-Tac-Toe...")
-        juego_tic_tac_toe(device)
-
-    def iniciar_juego_simon():
-        print("Iniciando Simón Dice...")
-        simon_dice(device)
-
-    def iniciar_juego_memoria():
-        print("Iniciando Juego de Memoria...")
-        juego_memoria(device)
-
-    def iniciar_juego_clasificacion():
-        print("Iniciando Juego de Clasificación...")
-        seleccionar_opciones_clasificacion()
-
-    def iniciar_juego_avatar():
-        print("Iniciando Juego de Avatares...")
-        juego_personalizacion(device)
-
-    def iniciar_juego_handprint():
-        print("Iniciando Juego de Manos...")
-        juego_handprint(device)
-
-    def iniciar_juego_piano():
-        print("Iniciando Piano...")
-        piano(device)
-
-    # Mapeo de funciones de juegos
-    funciones_juegos = {
-        "La Vieja": iniciar_juego_tictactoe,
-        "Simon Dice": iniciar_juego_simon,
-        "Memoria": iniciar_juego_memoria,
-        "Clasificacion": iniciar_juego_clasificacion,
-        "Avatares": iniciar_juego_avatar,
-        "Mano": iniciar_juego_handprint,
-        "Piano": iniciar_juego_piano
-    }
-
-    # Función para detectar el juego seleccionado
-    def detectar_juego_seleccionado(x_touch, y_touch, areas_opciones):
+    # 6. Función para detectar el juego seleccionado
+    def detectar_juego_seleccionado(x_touch, y_touch, game_positions):
         """
         Dado un punto de toque (x_touch, y_touch), determina qué juego ha sido seleccionado.
         """
-        for juego, area in areas_opciones.items():
-            if area['x1'] <= x_touch <= area['x2'] and area['y1'] <= y_touch <= area['y2']:
-                return juego
+        for nombre, pos in game_positions.items():
+            x, y = pos['x'], pos['y']
+            w, h = pos['width'], pos['height']
+            if x <= x_touch <= x + w and y <= y_touch <= y + h:
+                return nombre
         return None
+    
+    # 7. La función de selección de niveles ahora está en vista_niveles_clasificacion.py
+    
+    # 7b. Funciones placeholder para otros juegos
+    def mostrar_mensaje_juego(nombre_juego):
+        """Muestra un mensaje cuando se selecciona un juego (placeholder)"""
+        mensaje_screen = videobeam_screen.copy()
+        
+        # Fondo semi-transparente
+        overlay = mensaje_screen.copy()
+        cv2.rectangle(overlay, (0, 0), (view_width, view_height), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, mensaje_screen, 0.3, 0, mensaje_screen)
+        
+        # Mensaje principal
+        texto_principal = f"¡{nombre_juego}!"
+        font = cv2.FONT_HERSHEY_DUPLEX
+        font_scale = 2.0
+        thickness = 4
+        text_size, _ = cv2.getTextSize(texto_principal, font, font_scale, thickness)
+        text_x = (view_width - text_size[0]) // 2
+        text_y = view_height // 2 - 50
+        
+        # Sombra del texto
+        cv2.putText(mensaje_screen, texto_principal, (text_x + 3, text_y + 3), 
+                   font, font_scale, (0, 0, 0), thickness + 2)
+        # Texto principal
+        cv2.putText(mensaje_screen, texto_principal, (text_x, text_y), 
+                   font, font_scale, (0, 255, 255), thickness)
+        
+        # Mensaje secundario
+        texto_secundario = "Este juego estará disponible pronto"
+        font_sec = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale_sec = 1.0
+        thickness_sec = 2
+        text_size_sec, _ = cv2.getTextSize(texto_secundario, font_sec, font_scale_sec, thickness_sec)
+        text_x_sec = (view_width - text_size_sec[0]) // 2
+        text_y_sec = view_height // 2 + 50
+        
+        cv2.putText(mensaje_screen, texto_secundario, (text_x_sec, text_y_sec), 
+                   font_sec, font_scale_sec, (255, 255, 255), thickness_sec)
+        
+        cv2.imshow("Menú de Juegos", mensaje_screen)
+        cv2.waitKey(2000)  # Mostrar por 2 segundos
 
+    # 8. Iniciar streams de cámara para detección de toques (solo si dmax_map está disponible)
+    if dmax_map_available:
+        rgb_stream = device.create_color_stream()
+        depth_stream = device.create_depth_stream()
+        rgb_stream.start()
+        depth_stream.start()
+
+        juego_seleccionado_flag = False  # Bandera para evitar múltiples selecciones
+        frame_count = 0
+        initialization_delay = 60  # Esperar 60 frames (aprox 2 segundos) antes de empezar a detectar toques
+
+        # 9. Bucle principal de detección de toques
+        while True:
+            juego_seleccionado_flag = False
+            frame_count += 1
+            frame = rgb_stream.read_frame()
+            depth_frame = depth_stream.read_frame()
+
+            if frame is None or depth_frame is None:
+                continue
+
+            rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+            bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+            bgr_data = cv2.flip(bgr_data, 1)
+            bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+
+            depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+            depth_data = cv2.flip(depth_data, 1)
+            depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+
+            # Crear la máscara que considera solo los valores entre dmin y dmax
+            touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+
+            # Operaciones morfológicas
+            kernel = np.ones((3, 3), np.uint8)
+            touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+
+            # No procesar toques durante el delay inicial
+            if frame_count < initialization_delay:
+                cv2.imshow("Menú de Juegos", videobeam_screen)
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+                continue
+
+            # Encontrar los contornos de los toques
+            contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Procesar cada contorno
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 50:  # Umbral mínimo de área
+                    M = cv2.moments(contour)
+                    if M['m00'] != 0:
+                        cx = int(M['m10'] / M['m00'])
+                        cy = int(M['m01'] / M['m00'])
+                        
+                        # Mapeo de coordenadas de ventana a viewport
+                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
+                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+
+                        # Detectar si se seleccionó un juego
+                        if not juego_seleccionado_flag:
+                            juego_seleccionado = detectar_juego_seleccionado(x_touch, y_touch, game_positions)
+                            if juego_seleccionado:
+                                print(f"Juego seleccionado: {juego_seleccionado}")
+                                
+                                # Mostrar efecto de elevación de la card
+                                for frame_num in range(10):  # Animación de elevación
+                                    # Recrear el fondo degradado
+                                    temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                    for y in range(view_height):
+                                        ratio = y / view_height
+                                        r = int(255 * (0.3 + 0.4 * ratio))
+                                        g = int(200 * (0.5 + 0.3 * ratio))
+                                        b = int(255 * (0.8 - 0.3 * ratio))
+                                        temp_screen[y, :] = [b, g, r]
+                                    
+                                    # Redibujar logo
+                                    draw_logo(temp_screen)
+                                    
+                                    # Dibujar todas las cards, pero solo la seleccionada elevada
+                                    if frame_num >= 5:  # Elevar después de unos frames
+                                        draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
+                                    else:
+                                        draw_game_cards(temp_screen, game_positions)
+                                    
+                                    cv2.imshow("Menú de Juegos", temp_screen)
+                                    cv2.waitKey(30)  # Pequeña pausa para la animación
+                                
+                                # Mantener la card elevada un poco más
+                                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                for y in range(view_height):
+                                    ratio = y / view_height
+                                    r = int(255 * (0.3 + 0.4 * ratio))
+                                    g = int(200 * (0.5 + 0.3 * ratio))
+                                    b = int(255 * (0.8 - 0.3 * ratio))
+                                    temp_screen[y, :] = [b, g, r]
+                                draw_logo(temp_screen)
+                                draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
+                                cv2.imshow("Menú de Juegos", temp_screen)
+                                cv2.waitKey(200)  # Pausa antes de mostrar el mensaje
+                                
+                                # Si es el juego de Clasificación, mostrar selección de niveles
+                                if juego_seleccionado == "Juego de Clasificacion":
+                                    # No cerrar la ventana, reutilizarla para transición suave
+                                    nivel_seleccionado = mostrar_seleccion_niveles_clasificacion(
+                                        device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                        existing_window_name="Menú de Juegos"
+                                    )
+                                    if nivel_seleccionado:
+                                        print(f"Procesando nivel seleccionado: {nivel_seleccionado}")
+                                        # Aquí puedes agregar la lógica para iniciar el juego con el nivel seleccionado
+                                        # Por ejemplo: juego_clasificacion(device, nivel=nivel_seleccionado, ...)
+                                    # Volver al menú principal después de seleccionar nivel o cancelar
+                                    # Recrear el menú
+                                    videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                    for y in range(view_height):
+                                        ratio = y / view_height
+                                        r = int(255 * (0.3 + 0.4 * ratio))
+                                        g = int(200 * (0.5 + 0.3 * ratio))
+                                        b = int(255 * (0.8 - 0.3 * ratio))
+                                        videobeam_screen[y, :] = [b, g, r]
+                                    draw_logo(videobeam_screen)
+                                    draw_game_cards(videobeam_screen, game_positions)
+                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.imshow("Menú de Juegos", videobeam_screen)
+                                    # Reiniciar el contador de frames para evitar detecciones inmediatas
+                                    frame_count = 0
+                                    juego_seleccionado_flag = True
+                                    break
+                                # Si es Absurdos Logicos, mostrar selección de tipo de absurdos
+                                elif juego_seleccionado == "Absurdos Logicos":
+                                    # No cerrar la ventana, reutilizarla para transición suave
+                                    tipo_seleccionado = mostrar_seleccion_absurdos(
+                                        device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                        existing_window_name="Menú de Juegos"
+                                    )
+                                    if tipo_seleccionado:
+                                        print(f"Tipo de absurdo seleccionado: {tipo_seleccionado}")
+                                        # Aquí puedes agregar la lógica para iniciar el juego con el tipo seleccionado
+                                        # Por ejemplo: juego_absurdos(device, tipo=tipo_seleccionado, ...)
+                                    # Volver al menú principal después de seleccionar tipo o cancelar
+                                    # Recrear el menú
+                                    videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                    for y in range(view_height):
+                                        ratio = y / view_height
+                                        r = int(255 * (0.3 + 0.4 * ratio))
+                                        g = int(200 * (0.5 + 0.3 * ratio))
+                                        b = int(255 * (0.8 - 0.3 * ratio))
+                                        videobeam_screen[y, :] = [b, g, r]
+                                    draw_logo(videobeam_screen)
+                                    draw_game_cards(videobeam_screen, game_positions)
+                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.imshow("Menú de Juegos", videobeam_screen)
+                                    # Reiniciar el contador de frames para evitar detecciones inmediatas
+                                    frame_count = 0
+                                    juego_seleccionado_flag = True
+                                    break
+                                else:
+                                    mostrar_mensaje_juego(juego_seleccionado)
+                                
+                                # Redibujar el menú después del mensaje
+                                videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                # Recrear el fondo degradado
+                                for y in range(view_height):
+                                    ratio = y / view_height
+                                    r = int(255 * (0.3 + 0.4 * ratio))
+                                    g = int(200 * (0.5 + 0.3 * ratio))
+                                    b = int(255 * (0.8 - 0.3 * ratio))
+                                    videobeam_screen[y, :] = [b, g, r]
+                                # Redibujar logo y cards
+                                draw_logo(videobeam_screen)
+                                draw_game_cards(videobeam_screen, game_positions)
+                                cv2.imshow("Menú de Juegos", videobeam_screen)
+                                # Reiniciar el contador de frames para evitar detecciones inmediatas
+                                frame_count = 0
+                                juego_seleccionado_flag = True
+                                break
+
+            # Mostrar la ventana
+            cv2.imshow("Menú de Juegos", videobeam_screen)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+
+        # Detener los streams de la cámara y cerrar las ventanas
+        rgb_stream.stop()
+        depth_stream.stop()
+        cv2.destroyAllWindows()
+    else:
+        # Si no hay dmax_map, solo mostrar el menú sin detección de toques
+        print("\n[INFO] El menú se mostrará pero la detección de toques no estará disponible.")
+        print("       Ejecuta la calibración para habilitar la detección de toques.\n")
+        
+        # Mostrar el menú estático
+        cv2.imshow("Menú de Juegos", videobeam_screen)
+        
+        # Esperar hasta que se presione 'q'
+        while True:
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+        
+        cv2.destroyAllWindows()
+
+    # Función auxiliar (no usada pero mantenida para compatibilidad)
     def seleccionar_opciones_clasificacion():
         """
         Muestra opciones para seleccionar el modo de clasificación y el tipo de piezas.
@@ -3197,156 +3697,108 @@ def mostrar_menu_juegos(device):
         else:
             print("No se seleccionaron todas las opciones necesarias. Volviendo al menú principal.")
 
-    rgb_stream = device.create_color_stream()
-    depth_stream = device.create_depth_stream()
-    rgb_stream.start()
-    depth_stream.start()
-
-    juego_seleccionado_flag = False  # Bandera para asegurarnos que solo se seleccione una vez
-
-    # Mantener la ventana abierta hasta que se presione 'q' o se seleccione un juego
-    while True:
-        juego_seleccionado_flag = False
-        frame = rgb_stream.read_frame()
-        depth_frame = depth_stream.read_frame()
-
-        if frame is None or depth_frame is None:
-            continue
-
-        rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
-        bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
-        bgr_data = cv2.flip(bgr_data, 1)
-        bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
-
-        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
-        depth_data = cv2.flip(depth_data, 1)
-        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
-
-        # Crear la máscara que considera solo los valores entre dmin y dmax
-        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-
-        # Operaciones morfológicas
-        kernel = np.ones((3, 3), np.uint8)
-        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
-
-        # Encontrar los contornos de los toques
-        contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Procesar cada punto de los contornos
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area > 50:  # Ajusta el umbral según sea necesario
-                for point in contour:
-                    cx, cy = point[0]
-                    x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                    y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
-
-                    # Detectar si se seleccionó un juego
-                    if not juego_seleccionado_flag:
-                        juego_seleccionado = detectar_juego_seleccionado(x_touch, y_touch, areas_opciones)
-                        if juego_seleccionado:
-                            print(f"Juego seleccionado: {juego_seleccionado}")
-                            cv2.destroyAllWindows() 
-                            # Llamar a la función correspondiente al juego
-                            funciones_juegos[juego_seleccionado]()
-                            juego_seleccionado_flag = True  # Evitar más selecciones
-                            break
-
-        # Mostrar la ventana de salida
-        cv2.imshow("Menú de Juegos", videobeam_screen)
-
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-
-    # Detener los streams de la cámara y cerrar las ventanas
-    rgb_stream.stop()
-    depth_stream.stop()
-    cv2.destroyAllWindows()
-
 if __name__ == "__main__":
-    # Inicializar OpenNI2
-    openni2.initialize("C:/Program Files/OpenNI2/Redist")  # Cambia esta ruta según tu instalación
+    # Inicializar OpenNI2 - Buscar en múltiples ubicaciones comunes
+    openni2_paths = []
+    
+    # 1. Primero verificar si hay una variable de entorno configurada
+    env_path = os.environ.get("OPENNI2_PATH")
+    if env_path:
+        openni2_paths.append(env_path)
+        openni2_paths.append(os.path.join(env_path, "Redist"))
+    
+    # 2. Agregar la ruta más común primero (prioridad)
+    openni2_paths.extend([
+        "C:/Program Files/OpenNI2/Redist",
+        "C:/Program Files/OpenNI2",
+    ])
+    
+    # 3. Agregar ubicaciones comunes en Windows usando variables de entorno
+    program_files = os.environ.get("ProgramFiles", "")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", "")
+    
+    if program_files:
+        openni2_paths.append(os.path.join(program_files, "OpenNI2", "Redist"))
+        openni2_paths.append(os.path.join(program_files, "OpenNI2"))
+        openni2_paths.append(os.path.join(program_files, "OpenNI2", "Driver"))
+    
+    if program_files_x86:
+        openni2_paths.append(os.path.join(program_files_x86, "OpenNI2", "Redist"))
+        openni2_paths.append(os.path.join(program_files_x86, "OpenNI2"))
+        openni2_paths.append(os.path.join(program_files_x86, "OpenNI2", "Driver"))
+    
+    # 4. Agregar otras rutas absolutas comunes
+    openni2_paths.extend([
+        "C:/Program Files (x86)/OpenNI2/Redist",
+        "C:/Program Files (x86)/OpenNI2",
+        "C:/OpenNI2/Redist",
+        "C:/OpenNI2",
+        "D:/Program Files/OpenNI2/Redist",
+        "D:/Program Files/OpenNI2",
+        "D:/Program Files (x86)/OpenNI2/Redist",
+        "D:/Program Files (x86)/OpenNI2",
+        "D:/OpenNI2/Redist",
+        "D:/OpenNI2",
+    ])
+    
+    # Eliminar duplicados y rutas vacías
+    openni2_paths = list(dict.fromkeys([p for p in openni2_paths if p]))
+    
+    openni2_initialized = False
+    last_exception = None
+    
+    for path in openni2_paths:
+        if os.path.exists(path):
+            try:
+                openni2.initialize(path)
+                openni2_initialized = True
+                print(f"✓ OpenNI2 inicializado desde: {path}")
+                break
+            except Exception as e:
+                last_exception = e
+                continue
+    
+    if not openni2_initialized:
+        print("=" * 60)
+        print("ERROR: No se pudo encontrar OpenNI2 SDK")
+        print("=" * 60)
+        print("\nSOLUCIONES:")
+        print("\n1. Instala OpenNI2 SDK desde:")
+        print("   https://structure.io/openni")
+        print("   Descarga: OpenNI 2 SDK for Windows")
+        print("\n2. O configura la variable de entorno OPENNI2_PATH:")
+        print("   setx OPENNI2_PATH \"C:\\ruta\\a\\OpenNI2\\Redist\"")
+        print("\n3. O especifica la ruta manualmente editando main.py")
+        print("   (agrega tu ruta al inicio de la lista openni2_paths)")
+        print("\nUbicaciones buscadas:")
+        for path in openni2_paths[:10]:  # Mostrar solo las primeras 10
+            status = "✓ Existe" if os.path.exists(path) else "✗ No existe"
+            print(f"  {status}: {path}")
+        if len(openni2_paths) > 10:
+            print(f"  ... y {len(openni2_paths) - 10} ubicaciones más")
+        if last_exception:
+            print(f"\nÚltimo error: {last_exception}")
+        print("=" * 60)
+        exit(1)
+    
     device = openni2.Device.open_any()
 
-    # if (os.path.exists("calibrated_area.txt") and (os.path.exists("dmax_map.txt"))):
-    #     file_loading = input("Desea usar la calibracion existente?")
-    #     if file_loading == 's':
-    #         with open("calibrated_area.txt", 'r') as f:
-    #             calibrated_area = f.readline().strip().split()
-    #             calibrated_area = tuple(map(int, calibrated_area))
-
-    #         dmax_data = np.loadtxt("dmax_map.txt", dtype=np.uint16)
-    #         x,  y, w, h = calibrated_area
-    #         dmax_map = dmax_data.reshape((h, w))
-    #     else: 
-    #         print("Procedemos a calibrar...")
-    #         calibrated_area, processed_image = calibrate_surface_using_black_squares(device)
-    #         if calibrated_area is not None:
-    #             print(f"Área calibrada: {calibrated_area}")
-    #             # Mostrar la imagen procesada
-    #             cv2.imshow("Calibrated Surface", processed_image)
-    #             cv2.waitKey(0)
-    #             cv2.destroyAllWindows()
-
-    #         if calibrated_area != (0, 0, 0, 0):
-    #             dmax_map = calculate_dmax(device, calibrated_area, num_frames=500)
-    #         else:
-    #             print("No se pudo calibrar la superficie.")
-
-    # sound_file = "do.wav"
-    # print(f"Área calibrada: {calibrated_area}")
-
-    ctk.set_appearance_mode("Dark")
-    ctk.set_default_color_theme("blue")
-
-    app = ctk.CTk()
-    app.title("Sistema Interactivo MagicboARd")
-    app.geometry("400x700")
-
-    def launch_game(game_func):
-        # Minimizar para dar foco al juego
-        app.iconify()
-        try:
-            game_func()
-        except Exception as e:
-            print(f"Error executing game: {e}")
-        finally:
-            app.deiconify()
-
-    # Title
-    title_label = ctk.CTkLabel(app, text="Opciones", font=ctk.CTkFont(size=20, weight="bold"))
-    title_label.pack(padx=20, pady=(20, 10))
-
-    scrollable_frame = ctk.CTkScrollableFrame(app, width=300, height=500)
-    scrollable_frame.pack(padx=20, pady=20, fill="y", expand=True)
-
-    # Helper lambda to capture function
-    def make_command(func):
-        return lambda: launch_game(func)
-
-    # Buttons
-    # Note: Some functions like detect_touches, recon_shapes, draw_on_canvas were called in the original code
-    # but do not appear in the file outline. Swapped 'detect_touches' for 'piano' which exists.
-    # Kept others as is, wrapped in try-except.
-
-    ctk.CTkButton(scrollable_frame, text="Notas Musicales", command=make_command(lambda: piano(device))).pack(padx=10, pady=10, fill="x")
-    # ctk.CTkButton(scrollable_frame, text="Reconociendo Figuras", command=make_command(lambda: recon_shapes(device))).pack(padx=10, pady=10, fill="x") # Function missing
-    # ctk.CTkButton(scrollable_frame, text="Dibujar", command=make_command(lambda: draw_on_canvas(device, calibrated_area, dmax_map))).pack(padx=10, pady=10, fill="x") # Function missing
-    ctk.CTkButton(scrollable_frame, text="Memoria", command=make_command(lambda: juego_memoria(device))).pack(padx=10, pady=10, fill="x")
-    ctk.CTkButton(scrollable_frame, text="Manos", command=make_command(lambda: juego_handprint(device))).pack(padx=10, pady=10, fill="x")
-    ctk.CTkButton(scrollable_frame, text="Clasificacion", command=make_command(lambda: juego_clasificacion(device, "figuras", True, 0))).pack(padx=10, pady=10, fill="x") # Default args logic inferred
-    ctk.CTkButton(scrollable_frame, text="Avatar", command=make_command(lambda: juego_personalizacion(device))).pack(padx=10, pady=10, fill="x")
-    ctk.CTkButton(scrollable_frame, text="Simon Dice", command=make_command(lambda: simon_dice(device))).pack(padx=10, pady=10, fill="x")
-    ctk.CTkButton(scrollable_frame, text="Vieja", command=make_command(lambda: juego_tic_tac_toe(device))).pack(padx=10, pady=10, fill="x")
-    ctk.CTkButton(scrollable_frame, text="Menu In-Game", command=make_command(lambda: mostrar_menu_juegos(device))).pack(padx=10, pady=10, fill="x")
-
-    # Quit button
-    quit_btn = ctk.CTkButton(app, text="Salir", fg_color="red", hover_color="darkred", command=app.quit)
-    quit_btn.pack(padx=20, pady=20, fill="x")
-
-    app.mainloop()
-
-
-    openni2.unload()
-    cv2.destroyAllWindows()
+    # Mostrar el menú de juegos automáticamente al ejecutar
+    print("=" * 60)
+    print("Iniciando MagicboARd - Menú de Juegos")
+    print("=" * 60)
+    print("\nPresiona 'q' en la ventana del menú para salir")
+    print("Toca las cards para seleccionar un juego\n")
+    
+    try:
+        mostrar_menu_juegos(device)
+    except KeyboardInterrupt:
+        print("\n\nInterrupción del usuario. Cerrando...")
+    except Exception as e:
+        print(f"\n\nError: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        openni2.unload()
+        cv2.destroyAllWindows()
+        print("\n¡Hasta luego!")

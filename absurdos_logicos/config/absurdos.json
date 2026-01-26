@@ -1,0 +1,21 @@
+{
+  "absurdos": [
+    {
+      "id": 1,
+      "imagen": "manzana_azul.png",
+      "descripcion": "Aquí hay una manzana azul",
+      "objeto": "manzana",
+      "propiedad_incorrecta": "azul",
+      "propiedades_correctas": ["roja", "verde", "amarilla"]
+    },
+    {
+      "id": 2,
+      "imagen": "tiburonconPiernas.png",
+      "descripcion": "Aquí hay un tiburón con piernas",
+      "objeto": "tiburón",
+      "propiedad_incorrecta": "piernas",
+      "propiedades_correctas": ["aletas"]
+    }
+  ]
+}
+
