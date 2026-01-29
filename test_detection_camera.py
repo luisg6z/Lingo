@@ -91,7 +91,7 @@ def initialize_openni2():
 
 def create_output_directory():
     """Crea el directorio para guardar las imágenes si no existe."""
-    output_dir = "dataset/images"
+    output_dir = "dataset/images-2"
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
 
