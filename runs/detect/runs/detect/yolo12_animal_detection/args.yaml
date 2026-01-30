@@ -1,7 +1,7 @@
 task: detect
 mode: train
 model: yolo12n.pt
-data: c:\Users\CHARBEL\Desktop\modelo-animales\dataset\data.yaml
+data: d:\labbd-2\Downloads\TesisAnimales.v3i.yolov12\data.yaml
 epochs: 100
 time: null
 patience: 100
@@ -10,7 +10,7 @@ imgsz: 640
 save: true
 save_period: -1
 cache: false
-device: cpu
+device: '0'
 workers: 8
 project: runs/detect
 name: yolo12_animal_detection
@@ -105,4 +105,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: C:\Users\CHARBEL\Desktop\Lingo\runs\detect\runs\detect\yolo12_animal_detection
+save_dir: C:\Users\labbd-2\Documents\detection-model-training\runs\detect\runs\detect\yolo12_animal_detection

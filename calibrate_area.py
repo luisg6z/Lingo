@@ -64,20 +64,24 @@ def calculate_dmax(device, calibrated_area, xv_min, yv_min, xv_max, yv_max, num_
 def proyectar_cuadrados(view_width, view_height):
     proyeccion = np.zeros((view_height, view_width, 3), dtype=np.uint8)
     cuadrado_size = 50
-    margen = 250
+    margen_izquierdo = 100  # Margen para el cuadrado inferior izquierdo
+    margen_derecho = 120    # Margen reducido para el cuadrado superior derecho (más a la derecha)
+    margen_vertical = 100   # Margen vertical para mantener proporción
+    ajuste_izquierda = 20    # Ajuste muy reducido para mover el cuadrado izquierdo más a la izquierda
+    ajuste_derecha = 30      # Ajuste reducido para mover el cuadrado derecho más a la derecha
 
-    # Cuadrado inferior izquierdo
-    x_izquierda = margen
-    y_izquierda = view_height - cuadrado_size 
+    # Cuadrado inferior izquierdo - movido más a la izquierda
+    x_izquierda = margen_izquierdo + ajuste_izquierda  # Solo 20 píxeles de ajuste = más a la izquierda
+    y_izquierda = view_height - cuadrado_size - margen_vertical
     cv2.rectangle(proyeccion, (x_izquierda, y_izquierda),
                   (x_izquierda + cuadrado_size, y_izquierda + cuadrado_size), (255, 255, 255), -1)
 
     cx_izquierda = x_izquierda + cuadrado_size // 2
     cy_izquierda = y_izquierda + cuadrado_size // 2
 
-    # Cuadrado superior derecho
-    y_derecha = margen
-    x_derecha = view_width - margen - cuadrado_size
+    # Cuadrado superior derecho - movido más a la derecha
+    y_derecha = margen_vertical
+    x_derecha = view_width - margen_derecho - cuadrado_size - ajuste_derecha  # Menos margen y menos ajuste = más a la derecha
     cv2.rectangle(proyeccion, (x_derecha, y_derecha),
                   (x_derecha + cuadrado_size, y_derecha + cuadrado_size), (255, 255, 255), -1)
 
@@ -440,9 +444,9 @@ def calibrar_mesa_y_detectar_toques(device):
             print(f"  - ROI: xw_min={xw_min}, xw_max={xw_max_escalado}, yw_min={yw_min_escalado}, yw_max={yw_max}")
             previous_roi = None
             touch_history = []
-            vibration_threshold = 15  # Umbral para vibraciones
-            touch_duration_threshold = 5  # Duración de toque requerida
-            max_history_frames = 10  # Máximo de frames en el historial
+            vibration_threshold = 20  # Umbral para vibraciones (aumentado para ser menos restrictivo)
+            touch_duration_threshold = 2  # Duración de toque requerida (reducido para detección más rápida)
+            max_history_frames = 5  # Máximo de frames en el historial (reducido para respuesta más rápida)
 
             # Crear la proyección usando las dimensiones del área de trabajo
             proyeccion = np.zeros((view_height, view_width, 3), dtype=np.uint8)
@@ -450,8 +454,20 @@ def calibrar_mesa_y_detectar_toques(device):
             # Dibujar el rectángulo del área calibrada en la proyección
             cv2.rectangle(proyeccion, (xv_min, yv_min), (xv_max, yv_max), (0, 255, 0), 2)
             
+            # Mostrar instrucciones
+            instrucciones = [
+                "Toca la mesa para ver los puntos",
+                "Presiona 'q' para salir"
+            ]
+            y_text = 30
+            for texto in instrucciones:
+                cv2.putText(proyeccion, texto, (xv_min + 10, yv_min + y_text), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                y_text += 30
+            
             print("[OK] Bucle de detección iniciado. Toca el área calibrada para probar.")
             print("[INFO] Los puntos rojos aparecerán en la proyección cuando toques la superficie.")
+            print("[INFO] Si no ves puntos, intenta tocar más fuerte o ajusta la profundidad.")
 
             while True:
                 # Leer frame de la cámara de profundidad
@@ -478,13 +494,15 @@ def calibrar_mesa_y_detectar_toques(device):
                 depth_roi = depth_data[yw_min_escalado:yw_max, xw_min:xw_max_escalado]
                 frame_roi = frame_bgr[yw_min_escalado:yw_max, xw_min:xw_max_escalado]
 
+                # Filtrar vibraciones de manera menos agresiva
                 if previous_roi is not None:
-                    # Detectar vibraciones y ajustar el ROI
                     roi_diff = cv2.absdiff(depth_roi, previous_roi)
                     vibration_mask = cv2.threshold(roi_diff, vibration_threshold, 255, cv2.THRESH_BINARY)[1]
-                    vibration_mask = cv2.medianBlur(vibration_mask, ksize=5)
-
-                    depth_roi[vibration_mask > 0] = previous_roi[vibration_mask > 0]
+                    vibration_mask = cv2.medianBlur(vibration_mask, ksize=3)  # Kernel más pequeño
+                    
+                    # Solo aplicar corrección en áreas con cambios muy grandes (probablemente ruido)
+                    # No corregir cambios pequeños que podrían ser toques reales
+                    depth_roi[vibration_mask > 200] = previous_roi[vibration_mask > 200]  # Solo cambios muy grandes
 
                 previous_roi = depth_roi.copy()
 
@@ -500,18 +518,23 @@ def calibrar_mesa_y_detectar_toques(device):
                 if len(touch_history) % 30 == 0:
                     pixels_touch = np.sum(touch_mask > 0)
                     print(f"Frame {len(touch_history)}: Píxeles en máscara de toque: {pixels_touch}")
+                    print(f"  Profundidad promedio en ROI: {np.mean(depth_roi[depth_roi > 0]):.1f}")
+                    print(f"  dmax promedio: {np.mean(dmax_map):.1f}, dmin promedio: {np.mean(dmin_map):.1f}")
 
                 # Aplicar filtros más suaves para no desplazar el centroide
                 # Usar filtro mediano más pequeño para preservar posición
                 touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
                 
-                # Aplicar apertura morfológica para eliminar ruido pequeño (antes de calcular centroide)
-                kernel = np.ones((3, 3), np.uint8)
+                # Aplicar apertura morfológica para eliminar ruido pequeño (kernel más pequeño)
+                kernel = np.ones((2, 2), np.uint8)  # Kernel más pequeño para preservar toques pequeños
                 touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+                
+                # También aplicar cierre para conectar áreas cercanas
+                touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
 
                 # Identificar componentes conectados
                 num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(touch_mask_filtered, connectivity=8)
-                min_size = 100  # Tamaño mínimo para considerar un área como toque válido
+                min_size = 50  # Tamaño mínimo reducido para detectar toques más pequeños
                 
                 # Filtrar componentes pequeños
                 for i in range(1, num_labels):
@@ -529,10 +552,19 @@ def calibrar_mesa_y_detectar_toques(device):
                 accumulated_mask = np.clip(accumulated_mask, 0, 255).astype(np.uint8)
 
                 # Considerar solo toques que persisten durante varios cuadros
-                _, final_touch_mask = cv2.threshold(accumulated_mask, touch_duration_threshold * 255, 255, cv2.THRESH_BINARY)
+                # Usar umbral más bajo para detectar toques más rápidamente
+                threshold_value = max(1, touch_duration_threshold) * 255
+                _, final_touch_mask = cv2.threshold(accumulated_mask, threshold_value, 255, cv2.THRESH_BINARY)
                 
                 # Recalcular componentes conectados en la máscara final
                 num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(final_touch_mask, connectivity=8)
+                
+                # Si no hay toques persistentes, usar la máscara filtrada directamente (detección inmediata)
+                if num_labels <= 1:
+                    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(touch_mask_filtered, connectivity=8)
+                    # Si aún no hay nada, usar la máscara original (sin filtros de persistencia)
+                    if num_labels <= 1:
+                        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(touch_mask, connectivity=8)
                 
                 for i in range(1, num_labels):
                     if stats[i, cv2.CC_STAT_AREA] >= min_size:
@@ -613,13 +645,24 @@ def calibrar_mesa_y_detectar_toques(device):
                         # Mostrar coordenadas en consola también
                         print(f"[TOQUE] Coordenadas: ({x_viewport}, {y_viewport})")
 
+                # Mostrar información de depuración en la proyección
+                info_text = f"Toques: {num_labels - 1}"
+                cv2.putText(proyeccion, info_text, (xv_min + 10, yv_max - 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                
                 # Mostrar la proyección y las máscaras
                 full_mask = np.zeros_like(depth_data, dtype=np.uint8)
                 full_mask[yw_min_escalado:yw_max, xw_min:xw_max_escalado] = final_touch_mask
+                
+                # Mostrar también la máscara filtrada para depuración
+                full_mask_filtered = np.zeros_like(depth_data, dtype=np.uint8)
+                full_mask_filtered[yw_min_escalado:yw_max, xw_min:xw_max_escalado] = touch_mask_filtered
+                
                 cv2.imshow("Proyeccion", proyeccion)
                 cv2.imshow("Mascara de Toque", full_mask)
+                cv2.imshow("Mascara Filtrada", full_mask_filtered)  # Nueva ventana para depuración
                 cv2.imshow("Camara", frame_bgr)
-                cv2.imshow("Camara2", frame_roi)
+                cv2.imshow("ROI", frame_roi)
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break

@@ -64,22 +64,23 @@ def calculate_dmax(device, calibrated_area, xv_min, yv_min, xv_max, yv_max, num_
 def proyectar_cuadrados(view_width, view_height):
     proyeccion = np.zeros((view_height, view_width, 3), dtype=np.uint8)
     cuadrado_size = 50
-    margen_izquierdo = 100  # Margen reducido para ampliar el área hacia la izquierda
-    margen_derecho = 100    # Margen aumentado para mover el cuadrado superior derecho más a la izquierda (mejor captura por cámara)
+    margen_izquierdo = 100  # Margen para el cuadrado inferior izquierdo
+    margen_derecho = 150    # Margen aumentado para mover el cuadrado superior derecho más a la izquierda
     margen_vertical = 100   # Margen vertical para mantener proporción
+    ajuste_horizontal = 80  # Ajuste para acercar los cuadrados horizontalmente
 
-    # Cuadrado inferior izquierdo
-    x_izquierda = margen_izquierdo
-    y_izquierda = view_height - cuadrado_size 
+    # Cuadrado inferior izquierdo - movido un poco a la derecha
+    x_izquierda = margen_izquierdo + ajuste_horizontal  # Movido a la derecha
+    y_izquierda = view_height - cuadrado_size - margen_vertical
     cv2.rectangle(proyeccion, (x_izquierda, y_izquierda),
                   (x_izquierda + cuadrado_size, y_izquierda + cuadrado_size), (255, 255, 255), -1)
 
     cx_izquierda = x_izquierda + cuadrado_size // 2
     cy_izquierda = y_izquierda + cuadrado_size // 2
 
-    # Cuadrado superior derecho
+    # Cuadrado superior derecho - movido un poco a la izquierda
     y_derecha = margen_vertical
-    x_derecha = view_width - margen_derecho - cuadrado_size
+    x_derecha = view_width - margen_derecho - cuadrado_size - ajuste_horizontal  # Movido a la izquierda
     cv2.rectangle(proyeccion, (x_derecha, y_derecha),
                   (x_derecha + cuadrado_size, y_derecha + cuadrado_size), (255, 255, 255), -1)
 

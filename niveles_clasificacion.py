@@ -349,7 +349,7 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
 
 def mostrar_vista_8_cards(device, coordenadas, dmax_map, dmin_map, draw_logo_func, num_escenarios, existing_window_name=None):
     """
-    Muestra la vista con 8 cards donde el usuario debe seleccionar N cards según num_escenarios.
+    Muestra la vista con 5 cards donde el usuario debe seleccionar N cards según num_escenarios.
     
     Args:
         device: Dispositivo OpenNI2
@@ -406,17 +406,14 @@ def mostrar_vista_8_cards(device, coordenadas, dmax_map, dmin_map, draw_logo_fun
     cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
                font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
     
-    # Definir 8 cards con las imágenes reales
+    # Definir 5 cards con las imágenes reales
     card_images = {}
     card_paths = {
         "Escenario 1": "images/Escenario1.png",      # Nota: sin espacio en el nombre del archivo
         "Escenario 2": "images/Escenario 2.png",
         "Escenario 3": "images/Escenario 3.png",
         "Escenario 4": "images/Escenario 4.png",
-        "Escenario 5": "images/Escenario 5.png",
-        "Escenario 6": "images/Escenario 6.png",
-        "Escenario 7": "images/Escenario 7.png",
-        "Escenario 8": "images/Escenario 8.png"
+        "Escenario 5": "images/Escenario 5.png"
     }
     
     # Cargar imágenes de las cards
@@ -429,25 +426,36 @@ def mostrar_vista_8_cards(device, coordenadas, dmax_map, dmin_map, draw_logo_fun
             # Si no existe la imagen, crear una card de color sólido
             card_images[card_name] = None
     
-    # Dimensiones de las cards (8 cards en grid 4x2)
-    card_width = 280
-    card_height = 250
-    card_spacing_x = 25
-    card_spacing_y = 25
+    # Dimensiones de las cards (5 cards: 3 arriba, 2 abajo)
+    card_width = 300  # Reducido de 320 a 300
+    card_height = 270  # Reducido de 290 a 270
+    card_spacing_x = 40  # Mantener espacio entre cards
+    card_spacing_y = 30  # Reducido de 35 a 30 para que quepan mejor
     
-    # Calcular posiciones (grid 4x2)
-    total_width = 4 * card_width + 3 * card_spacing_x
+    # Calcular posiciones (grid 3x2: 3 cards arriba, 2 cards abajo)
+    # Fila superior: 3 cards
+    total_width_top = 3 * card_width + 2 * card_spacing_x
+    # Fila inferior: 2 cards (centradas)
+    total_width_bottom = 2 * card_width + 1 * card_spacing_x
     total_height = 2 * card_height + card_spacing_y
-    start_x = (view_width - total_width) // 2
-    start_y = 260  # Bajado más para dejar espacio al título
+    start_x_top = (view_width - total_width_top) // 2
+    start_x_bottom = (view_width - total_width_bottom) // 2
+    start_y = 240  # Subido de 260 a 240 para evitar que se corten las cards de abajo
     
     card_positions = {}
     card_names = list(card_paths.keys())
     
     for idx, card_name in enumerate(card_names):
-        row = idx // 4
-        col = idx % 4
-        x = start_x + col * (card_width + card_spacing_x)
+        if idx < 3:
+            # Primera fila: 3 cards
+            row = 0
+            col = idx
+            x = start_x_top + col * (card_width + card_spacing_x)
+        else:
+            # Segunda fila: 2 cards (centradas)
+            row = 1
+            col = idx - 3
+            x = start_x_bottom + col * (card_width + card_spacing_x)
         y = start_y + row * (card_height + card_spacing_y)
         card_positions[card_name] = {
             'x': x,
@@ -819,10 +827,13 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
         # Asegurar que no se salga por la izquierda
         start_x = max(xv_min + margin_x, start_x)
     
-    # Calcular start_y centrado verticalmente dentro del área visible
-    start_y = yv_min + margin_y + (available_height - rect_height) // 2
+    # Calcular start_y más abajo para evitar choque con el título
+    # El título está en y=180, así que empezamos desde y=250 para dejar espacio
+    start_y_base = 250  # Posición base más abajo para evitar el título
+    # Calcular start_y considerando el área visible pero empezando más abajo
+    start_y = max(start_y_base, yv_min + margin_y + (available_height - rect_height) // 2)
     # Asegurar que no se salga del área visible
-    start_y = max(yv_min + margin_y, min(start_y, yv_max - margin_y - rect_height))
+    start_y = max(start_y_base, min(start_y, yv_max - margin_y - rect_height))
     
     # Crear diccionario con las posiciones de los rectángulos
     rectangulos_positions = {}
