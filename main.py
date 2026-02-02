@@ -13,6 +13,7 @@ import mediapipe as mp
 import json
 import math
 import threading
+import niveles_clasificacion
 from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
 from absurdos_seleccion import mostrar_seleccion_absurdos
 
@@ -2824,6 +2825,115 @@ def mostrar_menu_juegos(device):
     
     # Dibujar el logo usando la función auxiliar
     logo_loaded = draw_logo(videobeam_screen)
+    
+    # Cargar imágenes de bocina
+    bocina_image = None
+    bocina_mute_image = None
+    if os.path.exists("images/Bocina.png"):
+        bocina_image = cv2.imread("images/Bocina.png", cv2.IMREAD_UNCHANGED)
+        if bocina_image is not None:
+            print("✓ Imagen de bocina cargada: images/Bocina.png")
+        else:
+            print("⚠ No se pudo cargar la imagen de bocina: images/Bocina.png")
+    else:
+        print("⚠ No se encontró la imagen: images/Bocina.png")
+    
+    if os.path.exists("images/BocinaMute.png"):
+        bocina_mute_image = cv2.imread("images/BocinaMute.png", cv2.IMREAD_UNCHANGED)
+        if bocina_mute_image is not None:
+            print("✓ Imagen de bocina mute cargada: images/BocinaMute.png")
+        else:
+            print("⚠ No se pudo cargar la imagen de bocina mute: images/BocinaMute.png")
+    else:
+        print("⚠ No se encontró la imagen: images/BocinaMute.png")
+    
+    # Estado de la card de bocina (muteada o no)
+    # Usar las variables globales del módulo niveles_clasificacion para mantener el estado del audio entre vistas
+    # Cargar y configurar el audio de fondo (solo si no está cargado)
+    if niveles_clasificacion._background_music_global is None:
+        if os.path.exists("relax-meditate-gentle-peaceful-291162.mp3"):
+            try:
+                niveles_clasificacion._background_music_global = pygame.mixer.Sound("relax-meditate-gentle-peaceful-291162.mp3")
+                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3")
+                # Iniciar el audio automáticamente si no está muteado
+                if not niveles_clasificacion._bocina_muted_global:
+                    niveles_clasificacion._background_music_global.play(-1)  # -1 significa bucle infinito
+                    print("✓ Audio de fondo iniciado automáticamente")
+            except Exception as e:
+                print(f"⚠ No se pudo cargar el audio de fondo: {e}")
+        else:
+            print("⚠ No se encontró el archivo de audio: relax-meditate-gentle-peaceful-291162.mp3")
+    
+    # Usar el estado global del audio
+    bocina_muted = niveles_clasificacion._bocina_muted_global
+    background_music = niveles_clasificacion._background_music_global
+    
+    # Función para dibujar card cuadrada con icono de bocina (estilo infantil) - amarilla con bocina
+    def draw_close_card_main(screen, elevated=False, muted=False):
+        """
+        Dibuja una card cuadrada con icono de bocina en el centro, estilo infantil, amarilla con bocina
+        
+        Args:
+            screen: Pantalla donde dibujar
+            elevated: Si True, la card se dibuja elevada (efecto de levantarse)
+            muted: Si True, muestra la imagen de bocina muteada (BocinaMute.png), si False muestra Bocina.png
+        """
+        # Posición base del lado derecho (parte inferior, misma posición X que tenía la card amarilla)
+        base_card_size = 100  # Tamaño del cuadrado (2 * radio de 50 para mantener el mismo tamaño)
+        card_margin_x = 180  # Mismo margen X que tenía la card amarilla
+        card_margin_y = 50  # Margen desde el borde inferior (misma posición Y que tenía la card amarilla)
+        
+        # Sin efecto de elevación - siempre el mismo tamaño y posición
+        card_size = base_card_size
+        # Calcular posición del cuadrado (esquina superior izquierda)
+        card_x = view_width - card_margin_x - card_size
+        card_y = view_height - card_margin_y - card_size
+        
+        # Dibujar la imagen completa como fondo de la card (usar imagen mute si está muteada)
+        # NOTA: Se eliminó la sombra negra como se solicitó
+        current_bocina_image = bocina_mute_image if muted and bocina_mute_image is not None else bocina_image
+        if current_bocina_image is not None:
+            # Redimensionar la imagen para que llene completamente la card
+            bocina_resized = cv2.resize(current_bocina_image, (card_size, card_size), interpolation=cv2.INTER_AREA)
+            
+            # Asegurar que esté dentro de los límites
+            if card_x >= 0 and card_y >= 0 and card_x + card_size <= screen.shape[1] and card_y + card_size <= screen.shape[0]:
+                # Si la imagen tiene canal alfa (transparencia)
+                if len(bocina_resized.shape) == 3 and bocina_resized.shape[2] == 4:
+                    # Extraer canal alfa
+                    alpha = bocina_resized[:, :, 3] / 255.0
+                    # Convertir BGR de la imagen
+                    img_bgr = bocina_resized[:, :, :3]
+                    # Mezclar con el fondo
+                    for c in range(3):
+                        screen[card_y:card_y+card_size, card_x:card_x+card_size, c] = (
+                            alpha * img_bgr[:, :, c] + 
+                            (1 - alpha) * screen[card_y:card_y+card_size, card_x:card_x+card_size, c]
+                        )
+                else:
+                    # Sin canal alfa, copiar directamente
+                    screen[card_y:card_y+card_size, card_x:card_x+card_size] = bocina_resized[:, :, :3]
+    
+    # Variables para la card de cerrar (necesarias para la detección)
+    # Usar un área rectangular para la detección, similar a las otras cards
+    close_card_size_main = 100  # Tamaño del cuadrado
+    close_card_margin_x_main = 180
+    close_card_margin_y_main = 50  # Margen desde el borde inferior
+    close_card_x_main = view_width - close_card_margin_x_main - close_card_size_main
+    close_card_y_main = view_height - close_card_margin_y_main - close_card_size_main  # Posición desde abajo
+    
+    # Crear un área rectangular de detección (más grande que el cuadrado para facilitar el toque)
+    close_card_detection_size_main = int(close_card_size_main * 1.2)  # Área más grande para facilitar el toque
+    close_card_detection_x_main = close_card_x_main - int(close_card_size_main * 0.1)
+    close_card_detection_y_main = close_card_y_main - int(close_card_size_main * 0.1)
+    close_card_detection_w_main = close_card_detection_size_main
+    close_card_detection_h_main = close_card_detection_size_main
+    
+    # Función para detectar si se tocó la card de cerrar (usando área rectangular como las otras cards)
+    def detectar_close_card_touch_main(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de cerrar (usando área rectangular)"""
+        return (close_card_detection_x_main <= x_touch <= close_card_detection_x_main + close_card_detection_w_main and
+                close_card_detection_y_main <= y_touch <= close_card_detection_y_main + close_card_detection_h_main)
 
     # 2. Definir los 3 juegos ficticios (sin acentos en los nombres)
     juegos = [
@@ -3069,6 +3179,8 @@ def mostrar_menu_juegos(device):
     
     # Dibujar las cards en la pantalla
     draw_game_cards(videobeam_screen, game_positions)
+    # Dibujar card de bocina en la parte inferior derecha
+    draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
 
     # 5. Mostrar la Ventana en la Proyección del Videobeam
     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
@@ -3140,7 +3252,20 @@ def mostrar_menu_juegos(device):
 
         juego_seleccionado_flag = False  # Bandera para evitar múltiples selecciones
         frame_count = 0
-        initialization_delay = 60  # Esperar 60 frames (aprox 2 segundos) antes de empezar a detectar toques
+        initialization_delay = 10  # Reducido a 10 frames para respuesta más rápida
+        
+        # Sistema de debounce temporal para evitar falsos positivos
+        from collections import defaultdict
+        touch_history = defaultdict(list)  # Historial de toques por posición
+        min_touch_frames = 2  # Requiere que el toque persista por al menos 2 frames consecutivos
+        touch_persistence_threshold = 0.8  # 80% de los frames deben tener el toque
+        min_touch_area = 100  # Área mínima para filtrar ruido pequeño pero permitir toques reales
+        max_touch_area = 50000  # Área máxima para evitar detecciones de objetos grandes
+        last_valid_touch_time = time.time()
+        touch_cooldown = 0.15  # Cooldown de 150ms entre toques válidos
+        history_cleanup_interval = 30  # Limpiar historial cada 30 frames
+        max_history_age = 1.0  # Eliminar entradas del historial más antiguas de 1 segundo
+        inactivity_threshold = 5.0  # Si no hay toques válidos en 5 segundos, ser más estricto
 
         # 9. Bucle principal de detección de toques
         while True:
@@ -3164,25 +3289,52 @@ def mostrar_menu_juegos(device):
             # Crear la máscara que considera solo los valores entre dmin y dmax
             touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
 
-            # Operaciones morfológicas
-            kernel = np.ones((3, 3), np.uint8)
-            touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+            # Aplicar filtros más suaves para preservar toques reales (igual que calibrate_area.py)
+            touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
+            
+            # Aplicar apertura morfológica para eliminar ruido pequeño
+            kernel = np.ones((2, 2), np.uint8)
+            touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+            
+            # También aplicar cierre para conectar áreas cercanas
+            touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
 
             # No procesar toques durante el delay inicial
             if frame_count < initialization_delay:
+                draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
                 cv2.imshow("Menú de Juegos", videobeam_screen)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
                 continue
 
-            # Encontrar los contornos de los toques
-            contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Encontrar los contornos de los toques (usar la máscara filtrada)
+            contours, _ = cv2.findContours(touch_mask_filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Limpiar historial antiguo periódicamente
+            current_time = time.time()
+            if frame_count % history_cleanup_interval == 0:
+                # Eliminar entradas del historial más antiguas de max_history_age segundos
+                for key in list(touch_history.keys()):
+                    touch_history[key] = [
+                        touch for touch in touch_history[key] 
+                        if current_time - touch[3] < max_history_age
+                    ]
+                    # Si el historial está vacío, eliminarlo
+                    if not touch_history[key]:
+                        del touch_history[key]
+            
+            # Limitar el tamaño del historial por posición
+            for key in list(touch_history.keys()):
+                if len(touch_history[key]) > min_touch_frames + 5:
+                    touch_history[key] = touch_history[key][-(min_touch_frames + 5):]
 
             # Procesar cada contorno
+            valid_touches_this_frame = []
             for contour in contours:
                 area = cv2.contourArea(contour)
-                if area > 50:  # Umbral mínimo de área
+                # Validar que el área esté en el rango esperado
+                if min_touch_area <= area <= max_touch_area:
                     M = cv2.moments(contour)
                     if M['m00'] != 0:
                         cx = int(M['m10'] / M['m00'])
@@ -3191,130 +3343,227 @@ def mostrar_menu_juegos(device):
                         # Mapeo de coordenadas de ventana a viewport
                         x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
                         y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                        
+                        # Agregar a historial (usar coordenadas discretizadas para agrupar toques cercanos)
+                        touch_key = (x_touch // 25, y_touch // 25)  # Agrupar toques dentro de 25 píxeles
+                        touch_history[touch_key].append((x_touch, y_touch, area, current_time))
+                        
+                        # Verificar si el toque ha persistido lo suficiente
+                        if len(touch_history[touch_key]) >= min_touch_frames:
+                            # Verificar cooldown
+                            if current_time - last_valid_touch_time > touch_cooldown:
+                                # Determinar si ha habido inactividad reciente
+                                time_since_last_touch = current_time - last_valid_touch_time
+                                is_inactive = time_since_last_touch > inactivity_threshold
+                                
+                                # Si hay inactividad, ser más estricto (requerir más frames y área más grande)
+                                required_frames = min_touch_frames + (2 if is_inactive else 0)
+                                required_min_area = int(min_touch_area * (1.5 if is_inactive else 1.0))
+                                
+                                # Obtener los últimos required_frames toques (o todos si hay menos)
+                                available_touches = len(touch_history[touch_key])
+                                if available_touches >= required_frames:
+                                    recent_touches = touch_history[touch_key][-required_frames:]
+                                    
+                                    # Validar que todos los toques sean recientes
+                                    time_window = 0.8 if is_inactive else 1.0
+                                    all_recent = all(current_time - touch[3] < time_window for touch in recent_touches)
+                                    
+                                    # Validar que el área sea razonablemente consistente
+                                    if all_recent and len(recent_touches) >= required_frames:
+                                        areas = [touch[2] for touch in recent_touches]
+                                        avg_area = sum(areas) / len(areas)
+                                        
+                                        # Validación: área promedio debe estar en rango válido
+                                        # Si hay inactividad, ser más estricto con la variación
+                                        if min(areas) > 0:
+                                            area_variance = max(areas) / min(areas)
+                                            max_variance = 2.5 if is_inactive else 3.5
+                                            if area_variance < max_variance and required_min_area <= avg_area <= max_touch_area:
+                                                valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+                                        elif required_min_area <= avg_area <= max_touch_area:
+                                            # Si no hay variación suficiente, solo permitir si está en rango y no hay inactividad
+                                            if not is_inactive:
+                                                valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+            
+            # Procesar solo los toques válidos (que han persistido lo suficiente)
+            for x_touch, y_touch, touch_key in valid_touches_this_frame:
+                # Limpiar el historial de este toque después de procesarlo
+                if touch_key in touch_history:
+                    del touch_history[touch_key]
+                last_valid_touch_time = current_time
 
-                        # Detectar si se seleccionó un juego
-                        if not juego_seleccionado_flag:
-                            juego_seleccionado = detectar_juego_seleccionado(x_touch, y_touch, game_positions)
-                            if juego_seleccionado:
-                                print(f"Juego seleccionado: {juego_seleccionado}")
-                                
-                                # Mostrar efecto de elevación de la card
-                                for frame_num in range(10):  # Animación de elevación
-                                    # Recrear el fondo degradado
-                                    temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                    for y in range(view_height):
-                                        ratio = y / view_height
-                                        r = int(255 * (0.3 + 0.4 * ratio))
-                                        g = int(200 * (0.5 + 0.3 * ratio))
-                                        b = int(255 * (0.8 - 0.3 * ratio))
-                                        temp_screen[y, :] = [b, g, r]
-                                    
-                                    # Redibujar logo
-                                    draw_logo(temp_screen)
-                                    
-                                    # Dibujar todas las cards, pero solo la seleccionada elevada
-                                    if frame_num >= 5:  # Elevar después de unos frames
-                                        draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
-                                    else:
-                                        draw_game_cards(temp_screen, game_positions)
-                                    
-                                    cv2.imshow("Menú de Juegos", temp_screen)
-                                    cv2.waitKey(30)  # Pequeña pausa para la animación
-                                
-                                # Mantener la card elevada un poco más
-                                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                for y in range(view_height):
-                                    ratio = y / view_height
-                                    r = int(255 * (0.3 + 0.4 * ratio))
-                                    g = int(200 * (0.5 + 0.3 * ratio))
-                                    b = int(255 * (0.8 - 0.3 * ratio))
-                                    temp_screen[y, :] = [b, g, r]
-                                draw_logo(temp_screen)
-                                draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
-                                cv2.imshow("Menú de Juegos", temp_screen)
-                                cv2.waitKey(200)  # Pausa antes de mostrar el mensaje
-                                
-                                # Si es el juego de Clasificación, mostrar selección de niveles
-                                if juego_seleccionado == "Juego de Clasificacion":
-                                    # No cerrar la ventana, reutilizarla para transición suave
-                                    nivel_seleccionado = mostrar_seleccion_niveles_clasificacion(
-                                        device, coordenadas, dmax_map, dmin_map, draw_logo,
-                                        existing_window_name="Menú de Juegos"
-                                    )
-                                    if nivel_seleccionado:
-                                        print(f"Procesando nivel seleccionado: {nivel_seleccionado}")
-                                        # Aquí puedes agregar la lógica para iniciar el juego con el nivel seleccionado
-                                        # Por ejemplo: juego_clasificacion(device, nivel=nivel_seleccionado, ...)
-                                    # Volver al menú principal después de seleccionar nivel o cancelar
-                                    # Recrear el menú
-                                    videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                    for y in range(view_height):
-                                        ratio = y / view_height
-                                        r = int(255 * (0.3 + 0.4 * ratio))
-                                        g = int(200 * (0.5 + 0.3 * ratio))
-                                        b = int(255 * (0.8 - 0.3 * ratio))
-                                        videobeam_screen[y, :] = [b, g, r]
-                                    draw_logo(videobeam_screen)
-                                    draw_game_cards(videobeam_screen, game_positions)
+                # Primero verificar si se tocó la card de bocina
+                if detectar_close_card_touch_main(x_touch, y_touch):
+                    print("Card de bocina tocada en menú principal")
+                    
+                    # Cambiar el estado de mute (usando variable global del módulo niveles_clasificacion)
+                    niveles_clasificacion._bocina_muted_global = not niveles_clasificacion._bocina_muted_global
+                    bocina_muted = niveles_clasificacion._bocina_muted_global
+                    print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
+                    
+                    # Controlar el audio según el estado
+                    if niveles_clasificacion._background_music_global is not None:
+                        if bocina_muted:
+                            # Detener el audio cuando está muteada
+                            pygame.mixer.stop()
+                            print("Audio de fondo detenido")
+                        else:
+                            # Reproducir el audio en bucle cuando está activada
+                            niveles_clasificacion._background_music_global.play(-1)  # -1 significa bucle infinito
+                            print("Audio de fondo iniciado (bucle)")
+                    
+                    # Redibujar la pantalla con el nuevo estado (sin efecto de elevación)
+                    temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                    for y in range(view_height):
+                        ratio = y / view_height
+                        r = int(255 * (0.3 + 0.4 * ratio))
+                        g = int(200 * (0.5 + 0.3 * ratio))
+                        b = int(255 * (0.8 - 0.3 * ratio))
+                        temp_screen[y, :] = [b, g, r]
+                    draw_logo(temp_screen)
+                    draw_game_cards(temp_screen, game_positions)
+                    draw_close_card_main(temp_screen, elevated=False, muted=bocina_muted)
+                    videobeam_screen = temp_screen
+                    cv2.imshow("Menú de Juegos", videobeam_screen)
+                    continue
+                
+                # Detectar si se seleccionó un juego
+                if not juego_seleccionado_flag:
+                    juego_seleccionado = detectar_juego_seleccionado(x_touch, y_touch, game_positions)
+                    if juego_seleccionado:
+                        print(f"Juego seleccionado: {juego_seleccionado}")
+                        
+                        # Mostrar efecto de elevación de la card (animación rápida)
+                        temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                        for y in range(view_height):
+                            ratio = y / view_height
+                            r = int(255 * (0.3 + 0.4 * ratio))
+                            g = int(200 * (0.5 + 0.3 * ratio))
+                            b = int(255 * (0.8 - 0.3 * ratio))
+                            temp_screen[y, :] = [b, g, r]
+                        draw_logo(temp_screen)
+                        draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
+                        draw_close_card_main(temp_screen, elevated=False, muted=bocina_muted)
+                        cv2.imshow("Menú de Juegos", temp_screen)
+                        cv2.waitKey(100)  # Pausa breve antes de cambiar
+                        
+                        # Si es el juego de Clasificación, mostrar selección de niveles
+                        if juego_seleccionado == "Juego de Clasificacion":
+                            # No cerrar la ventana, reutilizarla para transición suave
+                            nivel_seleccionado = mostrar_seleccion_niveles_clasificacion(
+                                device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                existing_window_name="Menú de Juegos"
+                            )
+                            if nivel_seleccionado:
+                                print(f"Procesando nivel seleccionado: {nivel_seleccionado}")
+                                # Aquí puedes agregar la lógica para iniciar el juego con el nivel seleccionado
+                                # Por ejemplo: juego_clasificacion(device, nivel=nivel_seleccionado, ...)
+                            
+                            # Volver al menú principal después de seleccionar nivel o cancelar (incluyendo cuando se presiona X)
+                            # Recrear el menú
+                            videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                            for y in range(view_height):
+                                ratio = y / view_height
+                                r = int(255 * (0.3 + 0.4 * ratio))
+                                g = int(200 * (0.5 + 0.3 * ratio))
+                                b = int(255 * (0.8 - 0.3 * ratio))
+                                videobeam_screen[y, :] = [b, g, r]
+                            draw_logo(videobeam_screen)
+                            draw_game_cards(videobeam_screen, game_positions)
+                            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            # Verificar si la ventana existe antes de recrearla
+                            try:
+                                prop = cv2.getWindowProperty("Menú de Juegos", cv2.WND_PROP_VISIBLE)
+                                if prop < 0:
+                                    # La ventana no existe, crearla
                                     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
                                     cv2.moveWindow("Menú de Juegos", 1920, 0)
                                     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                                    cv2.imshow("Menú de Juegos", videobeam_screen)
-                                    # Reiniciar el contador de frames para evitar detecciones inmediatas
-                                    frame_count = 0
-                                    juego_seleccionado_flag = True
-                                    break
-                                # Si es Absurdos Logicos, mostrar selección de tipo de absurdos
-                                elif juego_seleccionado == "Absurdos Logicos":
-                                    # No cerrar la ventana, reutilizarla para transición suave
-                                    tipo_seleccionado = mostrar_seleccion_absurdos(
-                                        device, coordenadas, dmax_map, dmin_map, draw_logo,
-                                        existing_window_name="Menú de Juegos"
-                                    )
-                                    if tipo_seleccionado:
-                                        print(f"Tipo de absurdo seleccionado: {tipo_seleccionado}")
-                                        # Aquí puedes agregar la lógica para iniciar el juego con el tipo seleccionado
-                                        # Por ejemplo: juego_absurdos(device, tipo=tipo_seleccionado, ...)
-                                    # Volver al menú principal después de seleccionar tipo o cancelar
-                                    # Recrear el menú
-                                    videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                    for y in range(view_height):
-                                        ratio = y / view_height
-                                        r = int(255 * (0.3 + 0.4 * ratio))
-                                        g = int(200 * (0.5 + 0.3 * ratio))
-                                        b = int(255 * (0.8 - 0.3 * ratio))
-                                        videobeam_screen[y, :] = [b, g, r]
-                                    draw_logo(videobeam_screen)
-                                    draw_game_cards(videobeam_screen, game_positions)
-                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
-                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                                    cv2.imshow("Menú de Juegos", videobeam_screen)
-                                    # Reiniciar el contador de frames para evitar detecciones inmediatas
-                                    frame_count = 0
-                                    juego_seleccionado_flag = True
-                                    break
                                 else:
-                                    mostrar_mensaje_juego(juego_seleccionado)
-                                
-                                # Redibujar el menú después del mensaje
-                                videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                # Recrear el fondo degradado
-                                for y in range(view_height):
-                                    ratio = y / view_height
-                                    r = int(255 * (0.3 + 0.4 * ratio))
-                                    g = int(200 * (0.5 + 0.3 * ratio))
-                                    b = int(255 * (0.8 - 0.3 * ratio))
-                                    videobeam_screen[y, :] = [b, g, r]
-                                # Redibujar logo y cards
-                                draw_logo(videobeam_screen)
-                                draw_game_cards(videobeam_screen, game_positions)
-                                cv2.imshow("Menú de Juegos", videobeam_screen)
-                                # Reiniciar el contador de frames para evitar detecciones inmediatas
-                                frame_count = 0
-                                juego_seleccionado_flag = True
-                                break
+                                    # La ventana existe, solo asegurar que esté en pantalla completa
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            except:
+                                # Si hay error, crear la ventana
+                                cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                            # Reiniciar el contador de frames para evitar detecciones inmediatas
+                            frame_count = 0
+                            juego_seleccionado_flag = True
+                            break
+                        # Si es Absurdos Logicos, mostrar selección de tipo de absurdos
+                        elif juego_seleccionado == "Absurdos Logicos":
+                            # No cerrar la ventana, reutilizarla para transición suave
+                            tipo_seleccionado = mostrar_seleccion_absurdos(
+                                device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                existing_window_name="Menú de Juegos"
+                            )
+                            if tipo_seleccionado:
+                                print(f"Tipo de absurdo seleccionado: {tipo_seleccionado}")
+                                # Aquí puedes agregar la lógica para iniciar el juego con el tipo seleccionado
+                                # Por ejemplo: juego_absurdos(device, tipo=tipo_seleccionado, ...)
+                            # Volver al menú principal después de seleccionar tipo o cancelar
+                            # Recrear el menú
+                            videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                            for y in range(view_height):
+                                ratio = y / view_height
+                                r = int(255 * (0.3 + 0.4 * ratio))
+                                g = int(200 * (0.5 + 0.3 * ratio))
+                                b = int(255 * (0.8 - 0.3 * ratio))
+                                videobeam_screen[y, :] = [b, g, r]
+                            draw_logo(videobeam_screen)
+                            draw_game_cards(videobeam_screen, game_positions)
+                            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            # Verificar si la ventana existe antes de recrearla
+                            try:
+                                prop = cv2.getWindowProperty("Menú de Juegos", cv2.WND_PROP_VISIBLE)
+                                if prop < 0:
+                                    # La ventana no existe, crearla
+                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                else:
+                                    # La ventana existe, solo asegurar que esté en pantalla completa
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            except:
+                                # Si hay error, crear la ventana
+                                cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                            # Reiniciar el contador de frames para evitar detecciones inmediatas
+                            frame_count = 0
+                            juego_seleccionado_flag = True
+                            break
+                        else:
+                            mostrar_mensaje_juego(juego_seleccionado)
+                            
+                            # Redibujar el menú después del mensaje
+                            videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                            # Recrear el fondo degradado
+                            for y in range(view_height):
+                                ratio = y / view_height
+                                r = int(255 * (0.3 + 0.4 * ratio))
+                                g = int(200 * (0.5 + 0.3 * ratio))
+                                b = int(255 * (0.8 - 0.3 * ratio))
+                                videobeam_screen[y, :] = [b, g, r]
+                            # Redibujar logo y cards
+                            draw_logo(videobeam_screen)
+                            draw_game_cards(videobeam_screen, game_positions)
+                            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                            # Reiniciar el contador de frames para evitar detecciones inmediatas
+                            frame_count = 0
+                            juego_seleccionado_flag = True
+                            break
 
+            # Asegurar que la card de bocina esté dibujada en cada frame
+            # Actualizar el estado de la bocina desde la variable global (por si cambió en otra vista)
+            bocina_muted = niveles_clasificacion._bocina_muted_global
+            
+            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
             # Mostrar la ventana
             cv2.imshow("Menú de Juegos", videobeam_screen)
 

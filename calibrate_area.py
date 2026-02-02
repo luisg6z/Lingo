@@ -444,7 +444,7 @@ def calibrar_mesa_y_detectar_toques(device):
             print(f"  - ROI: xw_min={xw_min}, xw_max={xw_max_escalado}, yw_min={yw_min_escalado}, yw_max={yw_max}")
             previous_roi = None
             touch_history = []
-            vibration_threshold = 20  # Umbral para vibraciones (aumentado para ser menos restrictivo)
+            vibration_threshold = 20  # Umbral para vibraciones
             touch_duration_threshold = 2  # Duración de toque requerida (reducido para detección más rápida)
             max_history_frames = 5  # Máximo de frames en el historial (reducido para respuesta más rápida)
 
