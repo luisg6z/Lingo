@@ -2,3 +2,5 @@ rgb_display.py
 venv/
 __pycache__/
 .venv/
+.env
+dataset/
