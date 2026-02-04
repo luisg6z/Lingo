@@ -1,0 +1,27 @@
+[project]
+name = "magicboard"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "albumentations",
+    "customtkinter",
+    "ipykernel",
+    "jupyter",
+    "matplotlib",
+    "mediapipe",
+    "numpy",
+    "opencv-python",
+    "openni",
+    "pandas",
+    "pillow",
+    "pygame",
+    "pyyaml",
+    "scikit-image",
+    "seaborn",
+    "torch",
+    "torchvision",
+    "tqdm",
+    "ultralytics",
+]

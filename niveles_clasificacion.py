@@ -3,6 +3,7 @@ import numpy as np
 import os
 import time
 import pygame
+from detection_logic import ObjectDetector, draw_shine_effect
 
 # Variable global para mantener el estado del audio entre vistas
 _bocina_muted_global = False
@@ -1600,6 +1601,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
         "Escenario 5": "images/EscenarioColegio.png"
     }
     
+    # Inicializar detector de objetos YOLO
+    detector = ObjectDetector()
+    
     # Cargar imágenes de los escenarios seleccionados
     loaded_escenario_images = {}
     for escenario in escenarios_seleccionados:
@@ -2087,6 +2091,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     rgb_stream.start()
     depth_stream.start()
     
+    # Inicializar detecciones vacías
+    detections = []
+    
     try:
         # Mostrar la vista indefinidamente hasta que se presione 'q' o se toque la card de cerrar
         while True:
@@ -2099,6 +2106,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
             bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
             bgr_data = cv2.flip(bgr_data, 1)
+            
+            # Realizar detección de objetos
+            detections = detector.detect(bgr_data)
             bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
             
             depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
@@ -2229,6 +2239,31 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             # Redibujar cards
             draw_close_card(rectangulos_screen)
             draw_back_card(rectangulos_screen)
+            
+            # Dibujar efectos de brillo para objetos detectados en el escenario correcto
+            for det in detections:
+                categoria_objetivo = det["category"]
+                if categoria_objetivo in rectangulos_positions:
+                    pos = rectangulos_positions[categoria_objetivo]
+                    
+                    # Calcular centro del objeto detectado en la cámara
+                    x1, y1, x2, y2 = det["bbox"]
+                    cx_cam = int((x1 + x2) / 2)
+                    cy_cam = int((y1 + y2) / 2)
+                    
+                    # Mapear a coordenadas de proyección
+                    x_proj, y_proj = detector.map_coordinates(cx_cam, cy_cam, coordenadas)
+                    
+                    # Verificar si el objeto está dentro de su escenario objetivo
+                    rx, ry, rw, rh = pos['x'], pos['y'], pos['width'], pos['height']
+                    if rx <= x_proj <= rx + rw and ry <= y_proj <= ry + rh:
+                        # Dibujar efecto de brillo (un poco más grande que el punto)
+                        draw_shine_effect(rectangulos_screen, x_proj - 40, y_proj - 40, 80, 80)
+                        
+                        # Opcional: Mostrar el nombre del objeto detectado
+                        label = det["label"]
+                        cv2.putText(rectangulos_screen, label, (x_proj - 30, y_proj - 50), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             
             cv2.imshow(window_name, rectangulos_screen)
             
