@@ -17,6 +17,17 @@ import niveles_clasificacion
 from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
 from absurdos_seleccion import mostrar_seleccion_absurdos
 
+# --- CONFIGURACIÓN DE PANTALLA ---
+# Si usas un segundo monitor o videobeam, ajusta SCREEN_OFFSET_X al ancho de tu pantalla principal (ej: 1920)
+SCREEN_OFFSET_X = 1920 
+SCREEN_OFFSET_Y = 0
+
+# Resolución del videobeam/segunda pantalla (ajusta si no se ve a pantalla completa)
+# Comúnmente 1280x800, 1920x1080, etc.
+VIEW_WIDTH = 1920
+VIEW_HEIGHT = 1080
+# --------------------------------
+
 def load_and_validate_dmax_map(coordenadas):
     """
     Carga y valida el archivo dmax_map.txt contra las coordenadas proporcionadas.
@@ -86,7 +97,7 @@ def load_and_validate_dmax_map(coordenadas):
         print(f"ERROR al hacer reshape del dmax_map: {e}")
         return None, None, None
 
-def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_contour_area=20000):
+def piano(device, videobeam_resolution=(VIEW_WIDTH, VIEW_HEIGHT), min_contour_area=500, max_contour_area=20000):
     # Cargar las coordenadas desde el archivo JSON
     with open("config/ultima_configuracion_coordenadas.json", "r") as file:
         config = json.load(file)
@@ -336,8 +347,8 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
                     cv2.drawContours(videobeam_screen, [cnt_vp], -1, color_bgr.get(color_name, (255, 255, 255)), thickness=cv2.FILLED)
 
             # Mostrar la pantalla del videobeam
-            cv2.namedWindow("Videobeam", cv2.WND_PROP_FULLSCREEN)
-            cv2.moveWindow("Videobeam", 1920, 0)
+            cv2.namedWindow("Videobeam", cv2.WINDOW_NORMAL)
+            cv2.moveWindow("Videobeam", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
             cv2.setWindowProperty("Videobeam", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             cv2.imshow("Videobeam", videobeam_screen)
 
@@ -402,8 +413,8 @@ def show_captured_shape(contours, color_names, sounds, view_width, view_height, 
         cv2.drawContours(white_screen, [transformed_contour], -1, color, -1)
 
     # Mostrar las formas capturadas en la pantalla del videobeam
-    cv2.namedWindow("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN)
-    cv2.moveWindow("Pantalla de Videobeam", 1920, 0)
+    cv2.namedWindow("Pantalla de Videobeam", cv2.WINDOW_NORMAL)
+    cv2.moveWindow("Pantalla de Videobeam", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
     cv2.setWindowProperty("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.imshow("Pantalla de Videobeam", cv2.flip(white_screen, 1))
 
@@ -443,8 +454,8 @@ def juego_memoria(device):
     victory_sound = pygame.mixer.Sound('./sounds/victory.mp3')  # Sonido de victoria
     confetti_video = cv2.VideoCapture('./videos/confetti.mp4')
 
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
 
     TIME_TO_DISPLAY = 1.5  # Tiempo en segundos antes de mostrar el animal cuando se quita una figura
     TIME_BEFORE_REMOVE = 3  # Tiempo para que las imágenes se mantengan antes de eliminarse tras una coincidencia
@@ -717,8 +728,8 @@ def juego_memoria(device):
                         if (shape, color) in removal_times:
                             del removal_times[(shape, color)] 
 
-                cv2.namedWindow("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN)
-                cv2.moveWindow("Pantalla de Videobeam", 1920, 0)
+                cv2.namedWindow("Pantalla de Videobeam", cv2.WINDOW_NORMAL)
+                cv2.moveWindow("Pantalla de Videobeam", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
                 cv2.setWindowProperty("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
                 cv2.imshow("Pantalla de Videobeam", videobeam_screen)
 
@@ -770,8 +781,8 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     dmin_map = dmax_map - 50
 
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
 
     # Inicializar pygame
     pygame.init()
@@ -1211,8 +1222,8 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
 
         # Mostrar el resultado
         cv2.imshow("Mascara", touch_mask_final)
-        cv2.namedWindow("Clasificación", cv2.WND_PROP_FULLSCREEN)
-        cv2.moveWindow("Clasificación", 1920, 0)
+        cv2.namedWindow("Clasificación", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Clasificación", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty("Clasificación", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Clasificación", videobeam_screen)
 
@@ -1230,8 +1241,8 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
 
 def juego_handprint(device, offset=10):
     # Tamaño de la pantalla del videobeam
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)  # Pantalla negra
 
     # Cargar las coordenadas de calibración desde el archivo JSON
@@ -1397,8 +1408,8 @@ def juego_handprint(device, offset=10):
         draw_buttons(videobeam_screen, buttons)
 
         # Mostrar la pantalla del videobeam
-        cv2.namedWindow("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN)
-        cv2.moveWindow("Pantalla de Videobeam", 1920, 0)
+        cv2.namedWindow("Pantalla de Videobeam", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Pantalla de Videobeam", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty("Pantalla de Videobeam", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Pantalla de Videobeam", videobeam_screen)
 
@@ -1433,8 +1444,8 @@ def juego_personalizacion(device):
     dmin_map = dmax_map - 15
 
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
 
     # Inicializar pygame
     pygame.init()
@@ -1707,7 +1718,7 @@ def juego_personalizacion(device):
         draw_drawing_options(screen, loaded_drawing_images, drawing_positions)
         # Configurar la ventana "Dibujo" en pantalla completa sin decoraciones
         cv2.namedWindow("Dibujo", cv2.WINDOW_NORMAL)
-        cv2.moveWindow("Dibujo", 1920, 0)
+        cv2.moveWindow("Dibujo", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty("Dibujo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Dibujo", screen)
 
@@ -1926,8 +1937,8 @@ def simon_dice(device):
     work_area_height = yv_max - yv_min
 
     # Crear la pantalla del videobeam
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
 
     # Redimensionar los avatares para que encajen en el área de trabajo
@@ -2648,7 +2659,7 @@ def juego_tic_tac_toe(device):
             esperar_reinicio = False  # Resetear el flag si el juego no está finalizado
 
         # Redibujar el videobeam_screen en cada iteración
-        videobeam_screen = np.zeros((800, 1280, 3), dtype=np.uint8)
+        videobeam_screen = np.zeros((VIEW_HEIGHT, VIEW_WIDTH, 3), dtype=np.uint8)
         dibujar_tablero(videobeam_screen)
 
         # Dibujar las figuras en el tablero
@@ -2689,8 +2700,8 @@ def juego_tic_tac_toe(device):
 
         # Mostrar la ventana de salida
         cv2.imshow("Área de Trabajo", area_trabajo)
-        cv2.namedWindow("Tic-Tac-Toe", cv2.WND_PROP_FULLSCREEN)
-        cv2.moveWindow("Tic-Tac-Toe", 1920, 0)
+        cv2.namedWindow("Tic-Tac-Toe", cv2.WINDOW_NORMAL)
+        cv2.moveWindow("Tic-Tac-Toe", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty("Tic-Tac-Toe", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Tic-Tac-Toe", videobeam_screen)
 
@@ -3836,7 +3847,7 @@ def mostrar_menu_juegos(device):
 
         # Mostrar la pantalla en la proyección
         cv2.namedWindow("Opciones de Clasificación", cv2.WINDOW_NORMAL)
-        cv2.moveWindow("Opciones de Clasificación", 1920, 0)
+        cv2.moveWindow("Opciones de Clasificación", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty("Opciones de Clasificación", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Opciones de Clasificación", opciones_screen)
 

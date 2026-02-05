@@ -25,3 +25,10 @@ dependencies = [
     "tqdm",
     "ultralytics",
 ]
+
+[tool.uv]
+override-dependencies = [
+    "opencv-python-headless; python_version < '0'",
+    "opencv-contrib-python; python_version < '0'",
+    "opencv-contrib-python-headless; python_version < '0'",
+]

@@ -5,6 +5,17 @@ import time
 import pygame
 from detection_logic import ObjectDetector, draw_shine_effect
 
+# --- CONFIGURACIÓN DE PANTALLA ---
+# Si usas un segundo monitor o videobeam, ajusta SCREEN_OFFSET_X al ancho de tu pantalla principal (ej: 1920)
+SCREEN_OFFSET_X = 1920 
+SCREEN_OFFSET_Y = 0
+
+# Resolución del videobeam/segunda pantalla (ajusta si no se ve a pantalla completa)
+# Comúnmente 1280x800, 1920x1080, etc.
+VIEW_WIDTH = 1920
+VIEW_HEIGHT = 1080
+# --------------------------------
+
 # Variable global para mantener el estado del audio entre vistas
 _bocina_muted_global = False
 _background_music_loaded = False  # Flag para saber si la música ya está cargada
@@ -59,8 +70,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     yv_max = coordenadas["yv_max"]
     
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     
     # Crear fondo
     niveles_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
@@ -457,7 +468,7 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     # Si no existe, crear nueva ventana
     if not window_exists:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        cv2.moveWindow(window_name, 1920, 0)
+        cv2.moveWindow(window_name, SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     
     # Mostrar en pantalla (transición suave sin cerrar)
@@ -742,8 +753,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     yv_max = coordenadas["yv_max"]
     
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     
     # Crear fondo
     cards_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
@@ -1273,7 +1284,7 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     # Si no existe, crear nueva ventana
     if not window_exists:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        cv2.moveWindow(window_name, 1920, 0)
+        cv2.moveWindow(window_name, SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     
     # Mostrar la nueva vista (transición suave sin cerrar)
@@ -1659,8 +1670,8 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     yv_max = coordenadas["yv_max"]
     
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     
     # Número de escenarios seleccionados
     num_escenarios = len(escenarios_seleccionados)

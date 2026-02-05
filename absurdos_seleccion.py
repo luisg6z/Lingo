@@ -3,6 +3,17 @@ import numpy as np
 import os
 import time
 
+# --- CONFIGURACIÓN DE PANTALLA ---
+# Si usas un segundo monitor o videobeam, ajusta SCREEN_OFFSET_X al ancho de tu pantalla principal (ej: 1920)
+SCREEN_OFFSET_X = 1920 
+SCREEN_OFFSET_Y = 0
+
+# Resolución del videobeam/segunda pantalla (ajusta si no se ve a pantalla completa)
+# Comúnmente 1280x800, 1920x1080, etc.
+VIEW_WIDTH = 1920
+VIEW_HEIGHT = 1080
+# --------------------------------
+
 
 def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
     """
@@ -30,8 +41,8 @@ def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_log
     yv_max = coordenadas["yv_max"]
     
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = 1280
-    view_height = 800
+    view_width = VIEW_WIDTH
+    view_height = VIEW_HEIGHT
     
     # Resolución del videobeam (segunda pantalla)
     VIDEOBEAM_WIDTH = 1920

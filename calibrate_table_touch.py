@@ -29,15 +29,18 @@ if sys.platform == 'win32':
 # CONFIGURACIÓN
 # ============================================================================
 
-# Dimensiones de la proyección (ajustar según tu proyector)
-PROJECTION_WIDTH = 1280
-PROJECTION_HEIGHT = 800
-
-# Tamaño de los cuadrados de calibración
-SQUARE_SIZE = 60
-
 # Márgenes desde los bordes de la proyección
 MARGIN = 120
+
+# --- CONFIGURACIÓN DE PANTALLA ---
+# Si usas un segundo monitor o videobeam, ajusta SCREEN_OFFSET_X al ancho de tu pantalla principal (ej: 1920)
+SCREEN_OFFSET_X = 1920 
+SCREEN_OFFSET_Y = 0
+
+# Dimensiones de la proyección (ajustar según tu proyector)
+PROJECTION_WIDTH = 1920
+PROJECTION_HEIGHT = 1080
+# --------------------------------
 
 # Parámetros de calibración de profundidad
 DEPTH_CALIBRATION_FRAMES = 500
@@ -246,7 +249,7 @@ def calibrar_mesa(device):
     """
     # Crear ventana de proyección
     cv2.namedWindow("Proyeccion", cv2.WINDOW_NORMAL)
-    cv2.moveWindow("Proyeccion", 1920, 0)  # Mover a segunda pantalla si existe
+    cv2.moveWindow("Proyeccion", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)  # Mover a segunda pantalla si existe
     cv2.setWindowProperty("Proyeccion", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     
     # Verificar sensores
