@@ -6,6 +6,17 @@ import customtkinter as ctk  # Para preguntar al usuario
 import json
 import os
 
+# --- CONFIGURACIÓN DE PANTALLA ---
+# Si usas un segundo monitor o videobeam, ajusta SCREEN_OFFSET_X al ancho de tu pantalla principal (ej: 1920)
+SCREEN_OFFSET_X = 1920 
+SCREEN_OFFSET_Y = 0
+
+# Resolución del videobeam/segunda pantalla (ajusta si no se ve a pantalla completa)
+# Comúnmente 1280x800, 1920x1080, etc.
+VIEW_WIDTH = 1920
+VIEW_HEIGHT = 1080
+# --------------------------------
+
 # Función para mostrar un mensaje en pantalla
 def mostrar_mensaje(proyeccion, texto, xv_min, yv_min, xv_max, yv_max):
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -28,7 +39,7 @@ def calculate_dmax(device, calibrated_area, xv_min, yv_min, xv_max, yv_max, num_
     depth_accum = np.zeros((h, w, max_depth - min_depth + 1), dtype=int)
 
     # Crear una ventana de proyección para mostrar el mensaje
-    proyeccion = np.zeros((800, 1280, 3), dtype=np.uint8)
+    proyeccion = np.zeros((VIEW_HEIGHT, VIEW_WIDTH, 3), dtype=np.uint8)
     mostrar_mensaje(proyeccion, "Calibrando...", xv_min, yv_min, xv_max, yv_max)
     cv2.imshow("Proyeccion", proyeccion)
     cv2.waitKey(1)
@@ -107,12 +118,12 @@ def detectar_cuadrados(frame):
 
 # Función para calibrar la mesa y detectar toques
 def calibrar_mesa_y_detectar_toques(device):
-    view_width = 1280  # Ancho de la proyección (videobeam)
-    view_height = 800  # Alto de la proyección (videobeam)
+    view_width = VIEW_WIDTH  # Ancho de la proyección (videobeam)
+    view_height = VIEW_HEIGHT  # Alto de la proyección (videobeam)
 
     # Crear una ventana para la proyección
     cv2.namedWindow("Proyeccion", cv2.WINDOW_NORMAL)
-    cv2.moveWindow("Proyeccion", 1920, 0)
+    cv2.moveWindow("Proyeccion", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
     cv2.setWindowProperty("Proyeccion", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     # Verificar primero si el sensor de color está disponible
