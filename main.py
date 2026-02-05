@@ -113,7 +113,7 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
     def window_to_viewport(x_touch, y_touch):
         """Convierte coordenadas de ventana a viewport utilizando los factores de escala"""
         x_viewport = int(xv_min + (x_touch) * sx)
-        y_viewport = int(yv_min + (y_touch - yw_min) * sy)
+        y_viewport = int(yv_min + (y_touch) * sy)
 
         # x_viewport = np.clip(x_viewport, 0, view_width - 1)
         # y_viewport = np.clip(y_viewport, 0, view_height - 1)
@@ -552,8 +552,8 @@ def juego_memoria(device):
         sy = float(yv_max - yv_min) / (yw_max - yw_min)
 
         # Mapeo de coordenadas de la ventana al viewport
-        x_viewport = int(xv_min + ((cX_window - xw_min) * sx ))
-        y_viewport = int(yv_min + ((cY_window - yw_min) * sy))
+        x_viewport = int(xv_min + (cX_window * sx))
+        y_viewport = int(yv_min + (cY_window * sy))
 
         # Calcular la posicion superior izquierda para centrar la imagen
         x_animal = int(x_viewport - w_ficha_px / 2)
@@ -695,7 +695,7 @@ def juego_memoria(device):
                                 animal_image = loaded_images.get(animal_name)
                                 if animal_image is not None and animal_image.size > 0:
                                     figure_to_draw = updated_positions.get((shape, color), captured_figure)
-                                    adjusted_figure = figure_to_draw + np.array([xw_min, yw_min])
+                                    adjusted_figure = figure_to_draw
                                     draw_animal_on_figure(
                                         videobeam_screen, 
                                         adjusted_figure, 
@@ -1077,7 +1077,7 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
 
                 # Mapeo de coordenadas de la ventana al viewport con ajuste
                 x_viewport = int(xv_min + (centro_x * sx))
-                y_viewport = int(yv_min + (centro_y * sy) - 30)  # Aplicar offset de 40
+                y_viewport = int(yv_min + (centro_y * sy))
 
                 figura_tipo = shape.lower()
                 color_name_lower = color_name.lower()
@@ -1299,7 +1299,7 @@ def juego_handprint(device, offset=10):
     # Función para mapear las coordenadas de la ventana (calibrada) al viewport (proyección)
     def window_to_viewport(x_touch, y_touch):
         x_viewport = int(xv_min + (x_touch) * sx)
-        y_viewport = int(yv_min + (y_touch - yw_min) * sy)
+        y_viewport = int(yv_min + (y_touch) * sy)
         return x_viewport, y_viewport
 
     # Función para dibujar los botones en la pantalla del videobeam
@@ -1966,7 +1966,7 @@ def simon_dice(device):
 
     def window_to_viewport(x_touch, y_touch):
         x_viewport = int(xv_min + (x_touch) * sx)
-        y_viewport = int(yv_min + (y_touch - yw_min) * sy)
+        y_viewport = int(yv_min + (y_touch) * sy)
         return x_viewport, y_viewport
 
     def rotate_point(point, angle_deg):

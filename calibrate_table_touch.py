@@ -422,6 +422,32 @@ def calibrar_mesa(device):
     calibrated_area = (xw_min, yw_min_escalado, xw_max_escalado - xw_min, yw_max - yw_min_escalado)
     dmax_map = calcular_mapa_profundidad(device, calibrated_area, xv_min, yv_min, xv_max, yv_max)
     
+    # Guardar configuración inmediatamente después de calcular dmax_map
+    # Esto evita desincronización si se cancela la fase interactiva de prueba de toques
+    print("\nGuardando configuración de calibración...")
+    config = {
+        "xv_min": int(xv_min),
+        "xv_max": int(xv_max),
+        "yv_min": int(yv_min),
+        "yv_max": int(yv_max),
+        "xw_min": int(xw_min),
+        "xw_max": int(xw_max_escalado),
+        "yw_min": int(yw_min_escalado),
+        "yw_max": int(yw_max),
+        "homography_matrix": homography_matrix.tolist() if homography_matrix is not None else None,
+        "projection_width": PROJECTION_WIDTH,
+        "projection_height": PROJECTION_HEIGHT,
+        "touch_depth_offset": TOUCH_DEPTH_OFFSET,
+        "touch_depth_range": TOUCH_DEPTH_RANGE,
+        "calibration_date": datetime.now().isoformat()
+    }
+    
+    os.makedirs("config", exist_ok=True)
+    config_path = "config/ultima_configuracion_coordenadas.json"
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=4)
+    print(f"✓ Configuración guardada en: {config_path}")
+
     # ========================================================================
     # PASO 3: PRUEBA DE TOQUES (VERIFICACIÓN)
     # ========================================================================
@@ -639,51 +665,11 @@ def calibrar_mesa(device):
     # Cerrar ventanas de prueba
     cv2.destroyWindow("ROI")
     
-    # ========================================================================
-    # PASO 4: GUARDAR CONFIGURACIÓN
-    # ========================================================================
     print("\n" + "=" * 60)
-    print("PASO 4: Guardando configuración")
+    print("CALIBRACIÓN COMPLETADA EXITOSAMENTE")
     print("=" * 60)
-    
-    # Calcular dmin_map
-    dmax_map = dmax_map.astype(np.int16) - TOUCH_DEPTH_OFFSET
-    dmin_map = dmax_map.astype(np.int16) - TOUCH_DEPTH_RANGE
-    
-    # Asegurar dimensiones correctas
-    roi_height = yw_max - yw_min_escalado
-    roi_width = xw_max_escalado - xw_min
-    if dmax_map.shape != (roi_height, roi_width):
-        print(f"[INFO] Redimensionando mapas de profundidad...")
-        dmax_map = cv2.resize(dmax_map.astype(np.float32), (roi_width, roi_height), 
-                            interpolation=cv2.INTER_NEAREST).astype(np.int16)
-        dmin_map = cv2.resize(dmin_map.astype(np.float32), (roi_width, roi_height), 
-                            interpolation=cv2.INTER_NEAREST).astype(np.int16)
-    
-    # Guardar configuración
-    config = {
-        "xv_min": int(xv_min),
-        "xv_max": int(xv_max),
-        "yv_min": int(yv_min),
-        "yv_max": int(yv_max),
-        "xw_min": int(xw_min),
-        "xw_max": int(xw_max_escalado),
-        "yw_min": int(yw_min_escalado),
-        "yw_max": int(yw_max),
-        "homography_matrix": homography_matrix.tolist() if homography_matrix is not None else None,
-        "projection_width": PROJECTION_WIDTH,
-        "projection_height": PROJECTION_HEIGHT,
-        "touch_depth_offset": TOUCH_DEPTH_OFFSET,
-        "touch_depth_range": TOUCH_DEPTH_RANGE,
-        "calibration_date": datetime.now().isoformat()
-    }
-    
-    os.makedirs("config", exist_ok=True)
-    config_path = "config/ultima_configuracion_coordenadas.json"
-    with open(config_path, "w") as f:
-        json.dump(config, f, indent=4)
-    
-    print(f"✓ Configuración guardada en: {config_path}")
+    print("\nLa configuración está lista para usar en el juego principal.")
+    print("Puedes cerrar esta ventana.")
     print("\n" + "=" * 60)
     print("CALIBRACIÓN COMPLETADA EXITOSAMENTE")
     print("=" * 60)

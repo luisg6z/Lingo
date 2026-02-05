@@ -373,6 +373,26 @@ def calibrar_mesa_y_detectar_toques(device):
 
     # Calcular dmax_map solo si la calibración se completó
     dmax_map = calculate_dmax(device, (xw_min, yw_min_escalado, xw_max_escalado - xw_min, yw_max - yw_min_escalado),xv_min, yv_min, xv_max, yv_max)
+    
+    # Guardar coordenadas inmediatamente después de calcular dmax_map
+    # Esto evita desincronización si se cancela la fase interactiva de toques
+    print(f"Guardando coordenadas de calibración...")
+    coordenadas = {
+        "xv_min": xv_min,
+        "xv_max": xv_max,
+        "yv_min": yv_min,
+        "yv_max": yv_max,
+        "xw_min": xw_min,
+        "xw_max": xw_max_escalado,  # Usamos xw_max_escalado como xw_max
+        "yw_min": yw_min_escalado,   # Usamos yw_min_escalado como yw_min
+        "yw_max": yw_max,
+        "homography_matrix": homography_matrix.tolist() if homography_matrix is not None else None
+    }
+
+    os.makedirs("config", exist_ok=True)
+    with open("config/ultima_configuracion_coordenadas.json", "w") as file:
+        json.dump(coordenadas, file, indent=4)
+    print("✓ Coordenadas guardadas exitosamente.")
     # Detección de toques
     if xw_min is not None:
         print("Iniciando detección de toques...")
@@ -668,22 +688,7 @@ def calibrar_mesa_y_detectar_toques(device):
                     break
 
 
-        print(f"Guardando coordenadas, yw_max: {yw_max}")
-        coordenadas = {
-            "xv_min": xv_min,
-            "xv_max": xv_max,
-            "yv_min": yv_min,
-            "yv_max": yv_max,
-            "xw_min": xw_min,
-            "xw_max": xw_max_escalado,  # Usamos xw_max_escalado como xw_max
-            "yw_min": yw_min_escalado,   # Usamos yw_min_escalado como yw_min
-            "yw_max": yw_max,
-            "homography_matrix": homography_matrix.tolist() if homography_matrix is not None else None
-            }
 
-         # Guardar las coordenadas en un archivo JSON en la carpeta config
-        with open("config/ultima_configuracion_coordenadas.json", "w") as file:
-            json.dump(coordenadas, file, indent=4)            
         # Detener los streams y destruir las ventanas           
         color_stream.stop()
         depth_stream.stop()
