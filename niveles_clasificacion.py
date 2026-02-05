@@ -18,7 +18,30 @@ VIEW_HEIGHT = 1080
 
 # Variable global para mantener el estado del audio entre vistas
 _bocina_muted_global = False
-_background_music_global = None
+_background_music_loaded = False  # Flag para saber si la música ya está cargada
+
+# Resolución del videobeam (segunda pantalla)
+VIDEOBEAM_WIDTH = 1920
+VIDEOBEAM_HEIGHT = 1080
+
+def scale_to_videobeam(image, source_width=1280, source_height=800):
+    """
+    Escala una imagen de la resolución fuente a la resolución del videobeam.
+    
+    Args:
+        image: Imagen a escalar (numpy array)
+        source_width: Ancho de la imagen fuente (default: 1280)
+        source_height: Alto de la imagen fuente (default: 800)
+    
+    Returns:
+        Imagen escalada a la resolución del videobeam
+    """
+    if image is None or image.size == 0:
+        return image
+    
+    # Escalar la imagen para que llene toda la pantalla del videobeam
+    scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+    return scaled_image
 
 
 def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
@@ -65,7 +88,7 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     draw_logo_func(niveles_screen)
     
     # Inicializar pygame si no está inicializado
-    global _bocina_muted_global, _background_music_global
+    global _bocina_muted_global, _background_music_loaded
     try:
         pygame.mixer.get_init()
     except:
@@ -92,15 +115,19 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     else:
         print("⚠ No se encontró la imagen: images/BocinaMute.png")
     
-    # Cargar y configurar el audio de fondo (solo si no está cargado)
-    if _background_music_global is None:
-        if os.path.exists("relax-meditate-gentle-peaceful-291162.mp3"):
+    # Cargar y configurar el audio de fondo usando mixer.music (solo si no está cargado)
+    if not _background_music_loaded:
+        archivo = "relax-meditate-gentle-peaceful-291162.mp3"
+        if os.path.exists(archivo):
             try:
-                _background_music_global = pygame.mixer.Sound("relax-meditate-gentle-peaceful-291162.mp3")
-                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3")
+                pygame.mixer.music.load(archivo)
+                # El módulo music suele responder mejor a volúmenes bajos
+                pygame.mixer.music.set_volume(0.05)  # 5% de volumen
+                _background_music_loaded = True
+                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3 (volumen al 5%)")
                 # Iniciar el audio automáticamente si no está muteado
                 if not _bocina_muted_global:
-                    _background_music_global.play(-1)  # -1 significa bucle infinito
+                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                     print("✓ Audio de fondo iniciado automáticamente")
             except Exception as e:
                 print(f"⚠ No se pudo cargar el audio de fondo: {e}")
@@ -184,8 +211,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
         """
         # Posición base del lado derecho
         base_card_radius = 50
-        card_margin_x = 180  # Aumentado para mover la card más a la izquierda
-        card_margin_y = 80  # Reducido más para mover la card más arriba
+        card_margin_x = 180
+        card_margin_y = 80
         
         # Efecto de elevación si está elevada
         elevation_offset = 0
@@ -445,7 +472,9 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     
     # Mostrar en pantalla (transición suave sin cerrar)
-    cv2.imshow(window_name, niveles_screen)
+    # Escalar a la resolución del videobeam antes de mostrar
+    niveles_screen_scaled = scale_to_videobeam(niveles_screen)
+    cv2.imshow(window_name, niveles_screen_scaled)
     
     # Función para detectar nivel seleccionado
     def detectar_nivel_seleccionado(x_touch, y_touch, nivel_positions):
@@ -512,14 +541,16 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                             print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
                             
                             # Controlar el audio según el estado
-                            if _background_music_global is not None:
+                            if _background_music_loaded:
                                 if bocina_muted:
                                     # Detener el audio cuando está muteada
-                                    pygame.mixer.stop()
+                                    pygame.mixer.music.stop()
                                     print("Audio de fondo detenido")
                                 else:
+                                    # Asegurar que el volumen esté al 1% antes de reproducir
+                                    pygame.mixer.music.set_volume(0.05)
                                     # Reproducir el audio en bucle cuando está activada
-                                    _background_music_global.play(-1)  # -1 significa bucle infinito
+                                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                                     print("Audio de fondo iniciado (bucle)")
                             
                             # Redibujar la pantalla con el nuevo estado
@@ -539,7 +570,6 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                             draw_close_card(temp_screen)
                             draw_bocina_card(temp_screen, muted=bocina_muted)
                             niveles_screen = temp_screen
-                            cv2.imshow(window_name, niveles_screen)
                             continue
                         
                         # Verificar si se tocó la card de cerrar
@@ -574,7 +604,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                 # Dibujar card de bocina
                                 draw_bocina_card(temp_screen, muted=bocina_muted)
                                 
-                                cv2.imshow(window_name, temp_screen)
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(30)
                             
                             return None  # Retornar None para volver al menú principal
@@ -612,7 +643,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                     # Dibujar card de cerrar y card de bocina (mantenerlas visibles)
                                     draw_close_card(temp_screen)
                                     draw_bocina_card(temp_screen, muted=bocina_muted)
-                                    cv2.imshow(window_name, temp_screen)
+                                    temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                    cv2.imshow(window_name, temp_screen_scaled)
                                     cv2.waitKey(20)
                                 
                                 # Mantener elevada brevemente antes de pasar a la siguiente vista
@@ -633,7 +665,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                 # Dibujar card de cerrar y card de bocina (mantenerlas visibles)
                                 draw_close_card(temp_screen)
                                 draw_bocina_card(temp_screen, muted=bocina_muted)
-                                cv2.imshow(window_name, temp_screen)
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(200)
                                 
                                 # Convertir el nivel seleccionado a número
@@ -663,7 +696,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                     draw_nivel_cards(niveles_screen, nivel_positions)
                                     draw_close_card(niveles_screen)
                                     draw_bocina_card(niveles_screen, muted=bocina_muted)
-                                    cv2.imshow(window_name, niveles_screen)
+                                    niveles_screen_scaled = scale_to_videobeam(niveles_screen)
+                                    cv2.imshow(window_name, niveles_screen_scaled)
                                     nivel_seleccionado_flag = False
                                     nivel_seleccionado = None
                                     continue  # Continuar el bucle para permitir más selecciones
@@ -677,7 +711,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
             # Redibujar card de cerrar y card de bocina en cada frame
             draw_close_card(niveles_screen)
             draw_bocina_card(niveles_screen, muted=bocina_muted)
-            cv2.imshow(window_name, niveles_screen)
+            niveles_screen_scaled = scale_to_videobeam(niveles_screen)
+            cv2.imshow(window_name, niveles_screen_scaled)
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -736,7 +771,7 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     draw_logo_func(cards_screen)
     
     # Inicializar pygame si no está inicializado
-    global _bocina_muted_global, _background_music_global
+    global _bocina_muted_global, _background_music_loaded
     try:
         pygame.mixer.get_init()
     except:
@@ -763,15 +798,19 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     else:
         print("⚠ No se encontró la imagen: images/BocinaMute.png")
     
-    # Cargar y configurar el audio de fondo (solo si no está cargado)
-    if _background_music_global is None:
-        if os.path.exists("relax-meditate-gentle-peaceful-291162.mp3"):
+    # Cargar y configurar el audio de fondo usando mixer.music (solo si no está cargado)
+    if not _background_music_loaded:
+        archivo = "relax-meditate-gentle-peaceful-291162.mp3"
+        if os.path.exists(archivo):
             try:
-                _background_music_global = pygame.mixer.Sound("relax-meditate-gentle-peaceful-291162.mp3")
-                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3")
+                pygame.mixer.music.load(archivo)
+                # El módulo music suele responder mejor a volúmenes bajos
+                pygame.mixer.music.set_volume(0.05)  # 5% de volumen
+                _background_music_loaded = True
+                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3 (volumen al 5%)")
                 # Iniciar el audio automáticamente si no está muteado
                 if not _bocina_muted_global:
-                    _background_music_global.play(-1)  # -1 significa bucle infinito
+                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                     print("✓ Audio de fondo iniciado automáticamente")
             except Exception as e:
                 print(f"⚠ No se pudo cargar el audio de fondo: {e}")
@@ -855,8 +894,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
         """
         # Posición base del lado derecho (misma posición que en mostrar_seleccion_niveles_clasificacion)
         base_card_radius = 50
-        card_margin_x = 180  # Mismo margen que en mostrar_seleccion_niveles_clasificacion
-        card_margin_y = 80  # Mismo margen que en mostrar_seleccion_niveles_clasificacion
+        card_margin_x = 180
+        card_margin_y = 80
         
         # Efecto de elevación si está elevada
         elevation_offset = 0
@@ -1249,7 +1288,9 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     
     # Mostrar la nueva vista (transición suave sin cerrar)
-    cv2.imshow(window_name, cards_screen)
+    # Escalar a la resolución del videobeam antes de mostrar
+    cards_screen_scaled = scale_to_videobeam(cards_screen)
+    cv2.imshow(window_name, cards_screen_scaled)
     
     # Función para detectar card seleccionada
     def detectar_card_seleccionada(x_touch, y_touch, card_positions, selected_cards=None):
@@ -1286,26 +1327,50 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     
     try:
         while True:
-            frame = rgb_stream.read_frame()
-            depth_frame = depth_stream.read_frame()
-            
-            if frame is None or depth_frame is None:
+            try:
+                frame = rgb_stream.read_frame()
+                depth_frame = depth_stream.read_frame()
+                
+                if frame is None or depth_frame is None:
+                    # Mostrar pantalla incluso si no hay frame
+                    draw_close_card(cards_screen)
+                    draw_back_card(cards_screen)
+                    draw_bocina_card(cards_screen, muted=bocina_muted)
+                    cards_screen_scaled = scale_to_videobeam(cards_screen)
+                    cv2.imshow(window_name, cards_screen_scaled)
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        break
+                    continue
+                
+                rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+                bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+                bgr_data = cv2.flip(bgr_data, 1)
+                bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+                
+                depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+                depth_data = cv2.flip(depth_data, 1)
+                depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+                
+                # Crear la máscara de toques
+                touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+                kernel = np.ones((3, 3), np.uint8)
+                touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+                contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            except Exception as e:
+                print(f"Error al procesar frame: {e}")
+                import traceback
+                traceback.print_exc()
+                # Mostrar pantalla incluso si hay error
+                draw_close_card(cards_screen)
+                draw_back_card(cards_screen)
+                draw_bocina_card(cards_screen, muted=bocina_muted)
+                cards_screen_scaled = scale_to_videobeam(cards_screen)
+                cv2.imshow(window_name, cards_screen_scaled)
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
                 continue
-            
-            rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
-            bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
-            bgr_data = cv2.flip(bgr_data, 1)
-            bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
-            
-            depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
-            depth_data = cv2.flip(depth_data, 1)
-            depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
-            
-            # Crear la máscara de toques
-            touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-            kernel = np.ones((3, 3), np.uint8)
-            touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
-            contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             # Procesar el contorno más grande (evitar múltiples detecciones)
             if contours:
@@ -1333,14 +1398,16 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                             print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
                             
                             # Controlar el audio según el estado
-                            if _background_music_global is not None:
+                            if _background_music_loaded:
                                 if bocina_muted:
                                     # Detener el audio cuando está muteada
-                                    pygame.mixer.stop()
+                                    pygame.mixer.music.stop()
                                     print("Audio de fondo detenido")
                                 else:
+                                    # Asegurar que el volumen esté al 1% antes de reproducir
+                                    pygame.mixer.music.set_volume(0.05)
                                     # Reproducir el audio en bucle cuando está activada
-                                    _background_music_global.play(-1)  # -1 significa bucle infinito
+                                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                                     print("Audio de fondo iniciado (bucle)")
                             
                             # Redibujar la pantalla con el nuevo estado
@@ -1361,50 +1428,52 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                             draw_back_card(temp_screen)
                             draw_bocina_card(temp_screen, muted=bocina_muted)
                             cards_screen = temp_screen
-                            cv2.imshow(window_name, cards_screen)
+                            cards_screen_scaled = scale_to_videobeam(cards_screen)
+                            cv2.imshow(window_name, cards_screen_scaled)
                             continue
                         
                         # Verificar si se tocó la card de retroceso (flecha)
                         if detectar_back_card_touch(x_touch, y_touch):
-                                print("Card de retroceso (flecha) tocada - Volviendo a la vista anterior")
+                            print("Card de retroceso (flecha) tocada - Volviendo a la vista anterior")
+                            
+                            # Efecto visual de elevación (animación)
+                            for frame_num in range(10):
+                                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                # Redibujar fondo
+                                for y in range(view_height):
+                                    ratio = y / view_height
+                                    r = int(255 * (0.3 + 0.4 * ratio))
+                                    g = int(200 * (0.5 + 0.3 * ratio))
+                                    b = int(255 * (0.8 - 0.3 * ratio))
+                                    temp_screen[y, :] = [b, g, r]
                                 
-                                # Efecto visual de elevación (animación)
-                                for frame_num in range(10):
-                                    temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                                    # Redibujar fondo
-                                    for y in range(view_height):
-                                        ratio = y / view_height
-                                        r = int(255 * (0.3 + 0.4 * ratio))
-                                        g = int(200 * (0.5 + 0.3 * ratio))
-                                        b = int(255 * (0.8 - 0.3 * ratio))
-                                        temp_screen[y, :] = [b, g, r]
-                                    
-                                    # Redibujar logo
-                                    draw_logo_func(temp_screen)
-                                    
-                                    # Redibujar título
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
-                                    
-                                    # Redibujar cards
-                                    draw_cards(temp_screen, card_positions, selected_cards)
-                                    
-                                    # Dibujar cards con efecto de elevación
-                                    draw_close_card(temp_screen, elevated=False)
-                                    if frame_num >= 5:
-                                        draw_back_card(temp_screen, elevated=True)
-                                    else:
-                                        draw_back_card(temp_screen, elevated=False)
-                                    
-                                    # Dibujar card de bocina
-                                    draw_bocina_card(temp_screen, muted=bocina_muted)
-                                    
-                                    cv2.imshow(window_name, temp_screen)
-                                    cv2.waitKey(30)
+                                # Redibujar logo
+                                draw_logo_func(temp_screen)
                                 
-                                return "BACK"  # Retornar "BACK" para volver a la vista anterior
+                                # Redibujar título
+                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                
+                                # Redibujar cards
+                                draw_cards(temp_screen, card_positions, selected_cards)
+                                
+                                # Dibujar cards con efecto de elevación
+                                draw_close_card(temp_screen, elevated=False)
+                                if frame_num >= 5:
+                                    draw_back_card(temp_screen, elevated=True)
+                                else:
+                                    draw_back_card(temp_screen, elevated=False)
+                                
+                                # Dibujar card de bocina
+                                draw_bocina_card(temp_screen, muted=bocina_muted)
+                                
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
+                                cv2.waitKey(30)
+                            
+                            return "BACK"  # Retornar "BACK" para volver a la vista anterior
                         
                         # Verificar si se tocó la card de cerrar (X)
                         if detectar_close_card_touch(x_touch, y_touch):
@@ -1443,7 +1512,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                 # Dibujar card de bocina
                                 draw_bocina_card(temp_screen, muted=bocina_muted)
                                 
-                                cv2.imshow(window_name, temp_screen)
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(30)
                             
                             return None  # Retornar None para volver al menú principal
@@ -1487,7 +1557,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                             draw_close_card(cards_screen)
                                             draw_back_card(cards_screen)
                                             draw_bocina_card(cards_screen, muted=bocina_muted)
-                                            cv2.imshow(window_name, cards_screen)
+                                            cards_screen_scaled = scale_to_videobeam(cards_screen)
+                                            cv2.imshow(window_name, cards_screen_scaled)
                                             
                                             # Esperar un momento para mostrar las cards seleccionadas con borde verde
                                             cv2.waitKey(800)  # 800ms de pausa antes de cambiar de vista
@@ -1521,7 +1592,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                                 draw_cards(cards_screen, card_positions, selected_cards)
                                                 draw_close_card(cards_screen)
                                                 draw_back_card(cards_screen)
-                                                cv2.imshow(window_name, cards_screen)
+                                                cards_screen_scaled = scale_to_videobeam(cards_screen)
+                                                cv2.imshow(window_name, cards_screen_scaled)
                                                 continue  # Continuar el bucle para permitir más selecciones
                                             return selected_cards
                                     
@@ -1555,7 +1627,8 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
             draw_close_card(cards_screen)
             draw_back_card(cards_screen)
             draw_bocina_card(cards_screen, muted=bocina_muted)
-            cv2.imshow(window_name, cards_screen)
+            cards_screen_scaled = scale_to_videobeam(cards_screen)
+            cv2.imshow(window_name, cards_screen_scaled)
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -1614,6 +1687,25 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     
     # Inicializar detector de objetos YOLO
     detector = ObjectDetector()
+    
+    # Inicializar pygame si no está inicializado
+    try:
+        pygame.mixer.get_init()
+    except:
+        pygame.mixer.init()
+    
+    # Cargar sonido de incorrecto
+    incorrecto_sound = None
+    if os.path.exists("sounds/incorrecto.mp3"):
+        try:
+            incorrecto_sound = pygame.mixer.Sound("sounds/incorrecto.mp3")
+            # Ajustar el volumen al 100% (volumen completo) para que se escuche bien
+            incorrecto_sound.set_volume(1.0)
+            print("✓ Sonido de incorrecto cargado: sounds/incorrecto.mp3 (volumen al 100%)")
+        except Exception as e:
+            print(f"⚠ No se pudo cargar el sonido de incorrecto: {e}")
+    else:
+        print("⚠ No se encontró el archivo de audio: sounds/incorrecto.mp3")
     
     # Cargar imágenes de los escenarios seleccionados
     loaded_escenario_images = {}
@@ -2089,12 +2181,39 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     
     # Si no existe, crear nueva ventana
     if not window_exists:
+        # Crear ventana en modo normal primero
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        cv2.moveWindow(window_name, SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+        # Mover a la segunda pantalla (1920, 0)
+        cv2.moveWindow(window_name, 1920, 0)
+        # Esperar un momento para que la ventana se mueva
+        cv2.waitKey(50)
+        # Establecer pantalla completa
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        # Esperar un momento más para que se aplique
+        cv2.waitKey(50)
+    else:
+        # Si la ventana ya existe, moverla y asegurar pantalla completa
+        try:
+            cv2.moveWindow(window_name, 1920, 0)
+            cv2.waitKey(10)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except:
+            pass
     
     # Mostrar en pantalla (transición suave sin cerrar)
-    cv2.imshow(window_name, rectangulos_screen)
+    # Escalar a la resolución del videobeam antes de mostrar
+    rectangulos_screen_scaled = scale_to_videobeam(rectangulos_screen)
+    cv2.imshow(window_name, rectangulos_screen_scaled)
+    
+    # Forzar pantalla completa después de mostrar (asegurar que se aplique)
+    cv2.waitKey(50)
+    try:
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        # Forzar también el resize por si acaso
+        cv2.resizeWindow(window_name, view_width, view_height)
+    except:
+        pass
     
     # Iniciar streams de cámara (aunque no se usen para interacción, mantener consistencia)
     rgb_stream = device.create_color_stream()
@@ -2104,6 +2223,55 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     
     # Inicializar detecciones vacías
     detections = []
+    
+    # Sistema de estabilización de nombres: historial por posición del objeto
+    # Usa una tupla (cx_proj, cy_proj) como clave para identificar objetos
+    label_history = {}  # {(cx, cy): [lista de nombres recientes]}
+    max_history_size = 10  # Número de detecciones a considerar para estabilización
+    confidence_threshold = 0.6  # Umbral mínimo de confianza para mostrar el nombre
+    
+    # Sistema de seguimiento de objetos para reproducir sonido de incorrecto
+    # Rastrea qué objetos ya han sonado para evitar repetir el sonido
+    # Clave: (label, escenario_actual) - Valor: True si ya sonó
+    objetos_que_ya_sonaron = {}  # {(label, escenario_actual): True}
+    # También rastreamos la posición anterior para detectar cuando un objeto cambia de escenario
+    objeto_posicion_anterior = {}  # {label: (cx_proj, cy_proj, escenario_anterior)}
+    
+    def get_stable_label(cx_proj, cy_proj, current_label, label_history, max_history_size):
+        """
+        Obtiene el nombre estabilizado basado en el historial de detecciones.
+        Usa una ventana deslizante de posiciones cercanas.
+        """
+        # Buscar en el historial objetos cercanos (dentro de 50 píxeles)
+        tolerance = 50
+        best_match = None
+        best_distance = float('inf')
+        
+        for (hist_cx, hist_cy), hist_labels in label_history.items():
+            distance = ((cx_proj - hist_cx) ** 2 + (cy_proj - hist_cy) ** 2) ** 0.5
+            if distance < tolerance and distance < best_distance:
+                best_match = (hist_cx, hist_cy)
+                best_distance = distance
+        
+        if best_match is not None:
+            # Usar el historial existente
+            hist_labels = label_history[best_match]
+            hist_labels.append(current_label)
+            if len(hist_labels) > max_history_size:
+                hist_labels.pop(0)
+            # Retornar el nombre más frecuente en el historial
+            from collections import Counter
+            most_common = Counter(hist_labels).most_common(1)
+            if most_common:
+                # Actualizar la posición en el historial
+                del label_history[best_match]
+                label_history[(int(cx_proj), int(cy_proj))] = hist_labels
+                return most_common[0][0]
+        else:
+            # Nuevo objeto, crear entrada en el historial
+            label_history[(int(cx_proj), int(cy_proj))] = [current_label]
+        
+        return current_label
     
     try:
         # Mostrar la vista indefinidamente hasta que se presione 'q' o se toque la card de cerrar
@@ -2182,7 +2350,8 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                     else:
                                         draw_close_card(temp_screen, elevated=False)
                                     
-                                    cv2.imshow(window_name, temp_screen)
+                                    temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                    cv2.imshow(window_name, temp_screen_scaled)
                                     cv2.waitKey(30)
                                 
                                 return "MAIN_MENU"  # Retornar "MAIN_MENU" para volver al menú principal
@@ -2221,7 +2390,8 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 else:
                                     draw_back_card(temp_screen, elevated=False)
                                 
-                                cv2.imshow(window_name, temp_screen)
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(30)
                             
                             return None  # Retornar None para volver a la vista anterior
@@ -2251,32 +2421,250 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             draw_close_card(rectangulos_screen)
             draw_back_card(rectangulos_screen)
             
-            # Dibujar efectos de brillo para objetos detectados en el escenario correcto
-            for det in detections:
-                categoria_objetivo = det["category"]
-                if categoria_objetivo in rectangulos_positions:
-                    pos = rectangulos_positions[categoria_objetivo]
-                    
-                    # Calcular centro del objeto detectado en la cámara
-                    x1, y1, x2, y2 = det["bbox"]
-                    cx_cam = int((x1 + x2) / 2)
-                    cy_cam = int((y1 + y2) / 2)
-                    
-                    # Mapear a coordenadas de proyección
-                    x_proj, y_proj = detector.map_coordinates(cx_cam, cy_cam, coordenadas)
-                    
-                    # Verificar si el objeto está dentro de su escenario objetivo
-                    rx, ry, rw, rh = pos['x'], pos['y'], pos['width'], pos['height']
-                    if rx <= x_proj <= rx + rw and ry <= y_proj <= ry + rh:
-                        # Dibujar efecto de brillo (un poco más grande que el punto)
-                        draw_shine_effect(rectangulos_screen, x_proj - 40, y_proj - 40, 80, 80)
-                        
-                        # Opcional: Mostrar el nombre del objeto detectado
-                        label = det["label"]
-                        cv2.putText(rectangulos_screen, label, (x_proj - 30, y_proj - 50), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            # Función para calcular IoU (Intersection over Union) entre dos bounding boxes
+            def calculate_iou(bbox1, bbox2):
+                """Calcula el IoU entre dos bounding boxes [x1, y1, x2, y2]"""
+                x1_1, y1_1, x2_1, y2_1 = bbox1
+                x1_2, y1_2, x2_2, y2_2 = bbox2
+                
+                # Calcular intersección
+                x1_inter = max(x1_1, x1_2)
+                y1_inter = max(y1_1, y1_2)
+                x2_inter = min(x2_1, x2_2)
+                y2_inter = min(y2_1, y2_2)
+                
+                if x2_inter <= x1_inter or y2_inter <= y1_inter:
+                    return 0.0
+                
+                inter_area = (x2_inter - x1_inter) * (y2_inter - y1_inter)
+                
+                # Calcular áreas
+                area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+                area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+                union_area = area1 + area2 - inter_area
+                
+                if union_area == 0:
+                    return 0.0
+                
+                return inter_area / union_area
             
-            cv2.imshow(window_name, rectangulos_screen)
+            # Función para combinar detecciones solapadas de la misma clase
+            def merge_overlapping_detections(detections, iou_threshold=0.3):
+                """
+                Agrupa y combina detecciones solapadas de la misma clase.
+                Retorna una lista de detecciones combinadas.
+                """
+                if not detections:
+                    return []
+                
+                # Agrupar por clase (label)
+                detections_by_label = {}
+                for det in detections:
+                    label = det.get("label", "")
+                    if label not in detections_by_label:
+                        detections_by_label[label] = []
+                    detections_by_label[label].append(det)
+                
+                merged_detections = []
+                
+                # Procesar cada grupo de detecciones de la misma clase
+                for label, label_detections in detections_by_label.items():
+                    if len(label_detections) == 1:
+                        # Solo una detección, agregarla directamente
+                        merged_detections.append(label_detections[0])
+                        continue
+                    
+                    # Múltiples detecciones de la misma clase
+                    # Agrupar las que están solapadas
+                    groups = []
+                    used = [False] * len(label_detections)
+                    
+                    for i, det1 in enumerate(label_detections):
+                        if used[i]:
+                            continue
+                        
+                        # Crear un nuevo grupo con esta detección
+                        group = [det1]
+                        used[i] = True
+                        
+                        # Buscar otras detecciones solapadas
+                        for j, det2 in enumerate(label_detections):
+                            if used[j] or i == j:
+                                continue
+                            
+                            # Calcular IoU
+                            iou = calculate_iou(det1["bbox"], det2["bbox"])
+                            
+                            if iou > iou_threshold:
+                                group.append(det2)
+                                used[j] = True
+                        
+                        groups.append(group)
+                    
+                    # Combinar cada grupo en una sola detección
+                    for group in groups:
+                        if len(group) == 1:
+                            merged_detections.append(group[0])
+                        else:
+                            # Combinar múltiples detecciones en una
+                            # Tomar el bounding box que engloba todas las detecciones
+                            x1_min = min(d["bbox"][0] for d in group)
+                            y1_min = min(d["bbox"][1] for d in group)
+                            x2_max = max(d["bbox"][2] for d in group)
+                            y2_max = max(d["bbox"][3] for d in group)
+                            
+                            # Usar la confianza promedio del grupo
+                            avg_confidence = sum(d.get("confidence", 0.0) for d in group) / len(group)
+                            
+                            # Crear detección combinada
+                            merged_det = {
+                                "label": label,
+                                "confidence": avg_confidence,
+                                "bbox": [x1_min, y1_min, x2_max, y2_max],
+                                "category": group[0].get("category")  # Usar la categoría de la primera
+                            }
+                            merged_detections.append(merged_det)
+                
+                return merged_detections
+            
+            # Agrupar detecciones solapadas antes de dibujarlas
+            merged_detections = merge_overlapping_detections(detections, iou_threshold=0.3)
+            
+            # Dibujar efectos de brillo para objetos detectados
+            # Calcular relación píxeles/cm (basado en view_width=1280 y ancho físico=192cm)
+            ancho_fisico_cm = 192
+            pixels_per_cm = view_width / ancho_fisico_cm  # ≈ 6.67 píxeles/cm
+            aumento_cm = 2  # Agregar 2 cm más al tamaño del cuadro
+            aumento_px = int(aumento_cm * pixels_per_cm)  # ≈ 13 píxeles
+            green_color = (0, 255, 0)  # Verde en BGR para escenario correcto
+            red_color = (0, 0, 255)  # Rojo en BGR para escenario incorrecto
+            
+            for det in merged_detections:
+                categoria_objetivo = det.get("category")
+                confidence = det.get("confidence", 0.0)
+                
+                # Solo procesar si la confianza es suficiente
+                if confidence < confidence_threshold:
+                    continue
+                
+                # Obtener el bounding box del objeto detectado
+                x1, y1, x2, y2 = det["bbox"]
+                
+                # Mapear las esquinas del bounding box a coordenadas de proyección
+                x1_proj, y1_proj = detector.map_coordinates(int(x1), int(y1), coordenadas)
+                x2_proj, y2_proj = detector.map_coordinates(int(x2), int(y2), coordenadas)
+                
+                # Calcular el centro directamente de las esquinas mapeadas (más preciso)
+                cx_proj = (x1_proj + x2_proj) / 2
+                cy_proj = (y1_proj + y2_proj) / 2
+                
+                # Calcular el tamaño del bounding box en proyección
+                bbox_width_proj = abs(x2_proj - x1_proj)
+                bbox_height_proj = abs(y2_proj - y1_proj)
+                
+                # Usar el tamaño real del bounding box y agregar 2 cm más
+                # Asegurar un tamaño mínimo razonable
+                min_size_px = int(5 * pixels_per_cm)  # Mínimo 5 cm
+                box_width = max(bbox_width_proj + aumento_px, min_size_px)
+                box_height = max(bbox_height_proj + aumento_px, min_size_px)
+                
+                # Determinar en qué escenario está el objeto (si está en alguno)
+                escenario_actual = None
+                for escenario, pos in rectangulos_positions.items():
+                    rx, ry, rw, rh = pos['x'], pos['y'], pos['width'], pos['height']
+                    if rx <= cx_proj <= rx + rw and ry <= cy_proj <= ry + rh:
+                        escenario_actual = escenario
+                        break
+                
+                # Si no está en ningún escenario, no dibujar cuadro
+                if escenario_actual is None:
+                    continue
+                
+                # Obtener el nombre estabilizado (necesario para el sonido y el texto)
+                current_label = det["label"]
+                stable_label = get_stable_label(cx_proj, cy_proj, current_label, label_history, max_history_size)
+                
+                # Determinar el color del cuadro
+                box_color = green_color  # Por defecto verde
+                
+                # Verificar si el objeto está en el escenario correcto
+                es_correcto = False
+                if categoria_objetivo is not None and categoria_objetivo == escenario_actual:
+                    # Está en el escenario correcto: verde
+                    box_color = green_color
+                    es_correcto = True
+                else:
+                    # Está en un escenario incorrecto (o no tiene categoría válida): rojo
+                    box_color = red_color
+                    es_correcto = False
+                
+                # Reproducir sonido de incorrecto si el objeto está en escenario incorrecto
+                if not es_correcto and incorrecto_sound is not None:
+                    
+                    # Crear clave única para este objeto en este escenario
+                    objeto_key = (stable_label, escenario_actual)
+                    
+                    # Verificar si este objeto ya estaba en este escenario anteriormente
+                    objeto_anterior_key = objeto_posicion_anterior.get(stable_label)
+                    objeto_cambio_escenario = False
+                    
+                    if objeto_anterior_key is not None:
+                        _, _, escenario_anterior = objeto_anterior_key
+                        if escenario_anterior != escenario_actual:
+                            # El objeto cambió de escenario, resetear el estado de sonido
+                            objeto_cambio_escenario = True
+                            # Limpiar todas las entradas anteriores de este objeto
+                            keys_to_remove = [k for k in objetos_que_ya_sonaron.keys() if k[0] == stable_label]
+                            for k in keys_to_remove:
+                                del objetos_que_ya_sonaron[k]
+                    
+                    # Si el objeto no ha sonado antes en este escenario, reproducir el sonido
+                    if objeto_key not in objetos_que_ya_sonaron or objeto_cambio_escenario:
+                        try:
+                            # Asegurar que el volumen esté al 100% antes de reproducir
+                            incorrecto_sound.set_volume(1.0)
+                            incorrecto_sound.play()
+                            objetos_que_ya_sonaron[objeto_key] = True
+                            print(f"Sonido de incorrecto reproducido para {stable_label} en {escenario_actual}")
+                        except Exception as e:
+                            print(f"Error al reproducir sonido de incorrecto: {e}")
+                    
+                    # Actualizar la posición y escenario anterior del objeto
+                    objeto_posicion_anterior[stable_label] = (cx_proj, cy_proj, escenario_actual)
+                elif es_correcto:
+                    # Si está en el escenario correcto, limpiar el estado de sonido para este objeto
+                    # para que pueda sonar de nuevo si se mueve a un escenario incorrecto
+                    keys_to_remove = [k for k in objetos_que_ya_sonaron.keys() if k[0] == stable_label]
+                    for k in keys_to_remove:
+                        del objetos_que_ya_sonaron[k]
+                    # Actualizar la posición y escenario anterior del objeto
+                    objeto_posicion_anterior[stable_label] = (cx_proj, cy_proj, escenario_actual)
+                
+                # Dibujar efecto de brillo centrado en el centro calculado de las esquinas mapeadas
+                box_x = int(cx_proj - box_width / 2)
+                box_y = int(cy_proj - box_height / 2)
+                box_w = int(box_width)
+                box_h = int(box_height)
+                draw_shine_effect(rectangulos_screen, box_x, box_y, box_w, box_h, color=box_color)
+                
+                # Mostrar el nombre del objeto detectado (solo si la confianza es alta)
+                if confidence >= confidence_threshold:
+                    text_x = int(cx_proj - box_width / 4)
+                    text_y = int(cy_proj - box_height / 2 - 10)
+                    # Usar color blanco para el texto
+                    cv2.putText(rectangulos_screen, stable_label, (text_x, text_y), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            # Escalar a la resolución del videobeam antes de mostrar
+            rectangulos_screen_scaled = scale_to_videobeam(rectangulos_screen)
+            cv2.imshow(window_name, rectangulos_screen_scaled)
+            
+            # Asegurar que la ventana esté en pantalla completa y en la segunda pantalla en cada frame
+            try:
+                cv2.moveWindow(window_name, 1920, 0)
+                cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            except:
+                pass
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):

@@ -2753,8 +2753,31 @@ def mostrar_menu_juegos(device):
         dmin_map = None
 
     # Tamaño de la pantalla del videobeam (viewport)
-    view_width = VIEW_WIDTH
-    view_height = VIEW_HEIGHT
+    view_width = 1280
+    view_height = 800
+    
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """
+        Escala una imagen de la resolución fuente a la resolución del videobeam.
+        
+        Args:
+            image: Imagen a escalar (numpy array)
+            source_width: Ancho de la imagen fuente (default: 1280)
+            source_height: Alto de la imagen fuente (default: 800)
+        
+        Returns:
+            Imagen escalada a la resolución del videobeam
+        """
+        if image is None or image.size == 0:
+            return image
+        
+        # Escalar la imagen para que llene toda la pantalla del videobeam
+        scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+        return scaled_image
 
     # Función auxiliar para dibujar el logo
     def draw_logo(screen):
@@ -2860,15 +2883,19 @@ def mostrar_menu_juegos(device):
     
     # Estado de la card de bocina (muteada o no)
     # Usar las variables globales del módulo niveles_clasificacion para mantener el estado del audio entre vistas
-    # Cargar y configurar el audio de fondo (solo si no está cargado)
-    if niveles_clasificacion._background_music_global is None:
-        if os.path.exists("relax-meditate-gentle-peaceful-291162.mp3"):
+    # Cargar y configurar el audio de fondo usando mixer.music (solo si no está cargado)
+    if not niveles_clasificacion._background_music_loaded:
+        archivo = "relax-meditate-gentle-peaceful-291162.mp3"
+        if os.path.exists(archivo):
             try:
-                niveles_clasificacion._background_music_global = pygame.mixer.Sound("relax-meditate-gentle-peaceful-291162.mp3")
-                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3")
+                pygame.mixer.music.load(archivo)
+                # El módulo music suele responder mejor a volúmenes bajos
+                pygame.mixer.music.set_volume(0.05)  # 5% de volumen
+                niveles_clasificacion._background_music_loaded = True
+                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3 (volumen al 5%)")
                 # Iniciar el audio automáticamente si no está muteado
                 if not niveles_clasificacion._bocina_muted_global:
-                    niveles_clasificacion._background_music_global.play(-1)  # -1 significa bucle infinito
+                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                     print("✓ Audio de fondo iniciado automáticamente")
             except Exception as e:
                 print(f"⚠ No se pudo cargar el audio de fondo: {e}")
@@ -2877,7 +2904,6 @@ def mostrar_menu_juegos(device):
     
     # Usar el estado global del audio
     bocina_muted = niveles_clasificacion._bocina_muted_global
-    background_music = niveles_clasificacion._background_music_global
     
     # Función para dibujar card cuadrada con icono de bocina (estilo infantil) - amarilla con bocina
     def draw_close_card_main(screen, elevated=False, muted=False):
@@ -3195,9 +3221,17 @@ def mostrar_menu_juegos(device):
 
     # 5. Mostrar la Ventana en la Proyección del Videobeam
     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-    cv2.moveWindow("Menú de Juegos", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+    cv2.moveWindow("Menú de Juegos", 1920, 0)
+    cv2.waitKey(50)  # Pequeño delay para que la ventana se mueva
     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.imshow("Menú de Juegos", videobeam_screen)
+    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)  # Forzar el tamaño
+    # Escalar a la resolución del videobeam antes de mostrar
+    videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+    cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+    # Forzar pantalla completa después de mostrar
+    cv2.waitKey(50)
+    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
 
     # 6. Función para detectar el juego seleccionado
     def detectar_juego_seleccionado(x_touch, y_touch, game_positions):
@@ -3251,7 +3285,12 @@ def mostrar_menu_juegos(device):
         cv2.putText(mensaje_screen, texto_secundario, (text_x_sec, text_y_sec), 
                    font_sec, font_scale_sec, (255, 255, 255), thickness_sec)
         
-        cv2.imshow("Menú de Juegos", mensaje_screen)
+        # Escalar a la resolución del videobeam antes de mostrar
+        mensaje_screen_scaled = scale_to_videobeam(mensaje_screen)
+        cv2.imshow("Menú de Juegos", mensaje_screen_scaled)
+        cv2.waitKey(50)
+        cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
         cv2.waitKey(2000)  # Mostrar por 2 segundos
 
     # 8. Iniciar streams de cámara para detección de toques (solo si dmax_map está disponible)
@@ -3313,7 +3352,8 @@ def mostrar_menu_juegos(device):
             # No procesar toques durante el delay inicial
             if frame_count < initialization_delay:
                 draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
-                cv2.imshow("Menú de Juegos", videobeam_screen)
+                videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
@@ -3414,14 +3454,16 @@ def mostrar_menu_juegos(device):
                     print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
                     
                     # Controlar el audio según el estado
-                    if niveles_clasificacion._background_music_global is not None:
+                    if niveles_clasificacion._background_music_loaded:
                         if bocina_muted:
                             # Detener el audio cuando está muteada
-                            pygame.mixer.stop()
+                            pygame.mixer.music.stop()
                             print("Audio de fondo detenido")
                         else:
+                            # Asegurar que el volumen esté al 1% antes de reproducir
+                            pygame.mixer.music.set_volume(0.05)
                             # Reproducir el audio en bucle cuando está activada
-                            niveles_clasificacion._background_music_global.play(-1)  # -1 significa bucle infinito
+                            pygame.mixer.music.play(-1)  # -1 significa bucle infinito
                             print("Audio de fondo iniciado (bucle)")
                     
                     # Redibujar la pantalla con el nuevo estado (sin efecto de elevación)
@@ -3436,7 +3478,8 @@ def mostrar_menu_juegos(device):
                     draw_game_cards(temp_screen, game_positions)
                     draw_close_card_main(temp_screen, elevated=False, muted=bocina_muted)
                     videobeam_screen = temp_screen
-                    cv2.imshow("Menú de Juegos", videobeam_screen)
+                    videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                    cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
                     continue
                 
                 # Detectar si se seleccionó un juego
@@ -3456,7 +3499,8 @@ def mostrar_menu_juegos(device):
                         draw_logo(temp_screen)
                         draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
                         draw_close_card_main(temp_screen, elevated=False, muted=bocina_muted)
-                        cv2.imshow("Menú de Juegos", temp_screen)
+                        temp_screen_scaled = scale_to_videobeam(temp_screen)
+                        cv2.imshow("Menú de Juegos", temp_screen_scaled)
                         cv2.waitKey(100)  # Pausa breve antes de cambiar
                         
                         # Si es el juego de Clasificación, mostrar selección de niveles
@@ -3489,17 +3533,26 @@ def mostrar_menu_juegos(device):
                                 if prop < 0:
                                     # La ventana no existe, crearla
                                     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-                                    cv2.moveWindow("Menú de Juegos", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.waitKey(50)
                                     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                                 else:
                                     # La ventana existe, solo asegurar que esté en pantalla completa
                                     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                             except:
                                 # Si hay error, crear la ventana
                                 cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-                                cv2.moveWindow("Menú de Juegos", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.waitKey(50)
                                 cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                                cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+                            cv2.waitKey(50)
+                            cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                             # Reiniciar el contador de frames para evitar detecciones inmediatas
                             frame_count = 0
                             juego_seleccionado_flag = True
@@ -3533,17 +3586,26 @@ def mostrar_menu_juegos(device):
                                 if prop < 0:
                                     # La ventana no existe, crearla
                                     cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-                                    cv2.moveWindow("Menú de Juegos", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.waitKey(50)
                                     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                                 else:
                                     # La ventana existe, solo asegurar que esté en pantalla completa
                                     cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                             except:
                                 # Si hay error, crear la ventana
                                 cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-                                cv2.moveWindow("Menú de Juegos", SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.waitKey(50)
                                 cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                                cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+                            cv2.waitKey(50)
+                            cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                             # Reiniciar el contador de frames para evitar detecciones inmediatas
                             frame_count = 0
                             juego_seleccionado_flag = True
@@ -3564,7 +3626,8 @@ def mostrar_menu_juegos(device):
                             draw_logo(videobeam_screen)
                             draw_game_cards(videobeam_screen, game_positions)
                             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
-                            cv2.imshow("Menú de Juegos", videobeam_screen)
+                            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
                             # Reiniciar el contador de frames para evitar detecciones inmediatas
                             frame_count = 0
                             juego_seleccionado_flag = True
@@ -3575,8 +3638,17 @@ def mostrar_menu_juegos(device):
             bocina_muted = niveles_clasificacion._bocina_muted_global
             
             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+            # Escalar a la resolución del videobeam antes de mostrar
+            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
             # Mostrar la ventana
-            cv2.imshow("Menú de Juegos", videobeam_screen)
+            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+            # Forzar pantalla completa en cada frame
+            cv2.waitKey(10)
+            try:
+                cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+            except:
+                pass
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -3592,7 +3664,12 @@ def mostrar_menu_juegos(device):
         print("       Ejecuta la calibración para habilitar la detección de toques.\n")
         
         # Mostrar el menú estático
-        cv2.imshow("Menú de Juegos", videobeam_screen)
+        videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+        cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+        # Forzar pantalla completa
+        cv2.waitKey(50)
+        cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
         
         # Esperar hasta que se presione 'q'
         while True:

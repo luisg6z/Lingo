@@ -44,6 +44,26 @@ def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_log
     view_width = VIEW_WIDTH
     view_height = VIEW_HEIGHT
     
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """
+        Escala una imagen de la resolución fuente a la resolución del videobeam.
+        
+        Args:
+            image: Imagen a escalar (numpy array)
+            source_width: Ancho de la imagen fuente (default: 1280)
+            source_height: Alto de la imagen fuente (default: 800)
+        
+        Returns:
+            Imagen escalada a la resolución del videobeam
+        """
+        if image is None or image.size == 0:
+            return image
+        return cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+    
     # Crear fondo
     absurdos_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
     
@@ -268,11 +288,18 @@ def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_log
     # Si no existe, crear nueva ventana
     if not window_exists:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        cv2.moveWindow(window_name, SCREEN_OFFSET_X, SCREEN_OFFSET_Y)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.waitKey(50)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
     
+    # Escalar a la resolución del videobeam antes de mostrar
+    absurdos_screen_scaled = scale_to_videobeam(absurdos_screen)
     # Mostrar en pantalla (transición suave sin cerrar)
-    cv2.imshow(window_name, absurdos_screen)
+    cv2.imshow(window_name, absurdos_screen_scaled)
+    cv2.waitKey(50)
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
     
     # Función para detectar tipo seleccionado
     def detectar_tipo_seleccionado(x_touch, y_touch, tipo_positions):
@@ -357,8 +384,11 @@ def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_log
                                     else:
                                         draw_tipo_cards(temp_screen, tipo_positions)
                                     
-                                    cv2.imshow(window_name, temp_screen)
+                                    temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                    cv2.imshow(window_name, temp_screen_scaled)
                                     cv2.waitKey(30)
+                                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                                 
                                 tipo_seleccionado = tipo_sel
                                 tipo_seleccionado_flag = True
@@ -378,12 +408,24 @@ def mostrar_seleccion_absurdos(device, coordenadas, dmax_map, dmin_map, draw_log
                                 cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
                                            font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
                                 draw_tipo_cards(temp_screen, tipo_positions, elevated_card=tipo_sel)
-                                cv2.imshow(window_name, temp_screen)
+                                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(500)
+                                cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                                 
                                 return tipo_seleccionado
             
-            cv2.imshow(window_name, absurdos_screen)
+            # Escalar a la resolución del videobeam antes de mostrar
+            absurdos_screen_scaled = scale_to_videobeam(absurdos_screen)
+            cv2.imshow(window_name, absurdos_screen_scaled)
+            # Forzar pantalla completa en cada frame
+            cv2.waitKey(10)
+            try:
+                cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+            except:
+                pass
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
