@@ -1,0 +1,180 @@
+{
+  "absurdos": [
+    {
+      "id": 1,
+      "imagen": "manzana-azul.png",
+      "descripcion": "Aquí hay una manzana azul",
+      "objeto": "manzana",
+      "propiedad_incorrecta": "azul",
+      "propiedades_correctas": ["roja", "verde", "amarilla"]
+    },
+    {
+      "id": 2,
+      "imagen": "tiburon-con-patas.png",
+      "descripcion": "Aquí hay un tiburón con patas",
+      "objeto": "tiburón",
+      "propiedad_incorrecta": "patas",
+      "propiedades_correctas": ["aletas"]
+    },
+    {
+      "id": 3,
+      "imagen": "almohada-piedra.png",
+      "descripcion": "Aquí hay una almohada de piedra",
+      "objeto": "almohada",
+      "propiedad_incorrecta": "piedra",
+      "propiedades_correctas": ["suave", "algodón", "plumas"]
+    },
+    {
+      "id": 4,
+      "imagen": "Barco-Carretera.png",
+      "descripcion": "Aquí hay un barco en la carretera",
+      "objeto": "barco",
+      "propiedad_incorrecta": "carretera",
+      "propiedades_correctas": ["agua", "mar", "océano"]
+    },
+    {
+      "id": 5,
+      "imagen": "bicicleta-cuadrada.png",
+      "descripcion": "Aquí hay una bicicleta cuadrada",
+      "objeto": "bicicleta",
+      "propiedad_incorrecta": "cuadrada",
+      "propiedades_correctas": ["redonda", "circular"]
+    },
+    {
+      "id": 6,
+      "imagen": "carro-en-techo.png",
+      "descripcion": "Aquí hay un carro en el techo",
+      "objeto": "carro",
+      "propiedad_incorrecta": "techo",
+      "propiedades_correctas": ["carretera", "calle", "suelo"]
+    },
+    {
+      "id": 7,
+      "imagen": "cerdo-volador.png",
+      "descripcion": "Aquí hay un cerdo volando",
+      "objeto": "cerdo",
+      "propiedad_incorrecta": "volando",
+      "propiedades_correctas": ["caminando", "en el suelo"]
+    },
+    {
+      "id": 8,
+      "imagen": "helado-caliente.png",
+      "descripcion": "Aquí hay un helado caliente",
+      "objeto": "helado",
+      "propiedad_incorrecta": "caliente",
+      "propiedades_correctas": ["frío", "congelado"]
+    },
+    {
+      "id": 9,
+      "imagen": "lluvia-de-piedras.png",
+      "descripcion": "Aquí está lloviendo piedras",
+      "objeto": "lluvia",
+      "propiedad_incorrecta": "piedras",
+      "propiedades_correctas": ["agua", "gotas"]
+    },
+    {
+      "id": 10,
+      "imagen": "pecera-sin-agua.png",
+      "descripcion": "Aquí hay una pecera sin agua",
+      "objeto": "pecera",
+      "propiedad_incorrecta": "sin agua",
+      "propiedades_correctas": ["con agua", "llena de agua"]
+    },
+    {
+      "id": 11,
+      "imagen": "perro-alas.png",
+      "descripcion": "Aquí hay un perro con alas",
+      "objeto": "perro",
+      "propiedad_incorrecta": "alas",
+      "propiedades_correctas": ["patas", "sin alas"]
+    },
+    {
+      "id": 12,
+      "imagen": "pez-gato.png",
+      "descripcion": "Aquí hay un pez con características de gato",
+      "objeto": "pez",
+      "propiedad_incorrecta": "gato",
+      "propiedades_correctas": ["escamas", "aletas"]
+    },
+    {
+      "id": 13,
+      "imagen": "pintando-con-banana.png",
+      "descripcion": "Aquí están pintando con una banana",
+      "objeto": "pintar",
+      "propiedad_incorrecta": "banana",
+      "propiedades_correctas": ["pincel", "brocha", "lápiz"]
+    },
+    {
+      "id": 14,
+      "imagen": "pizza-helada.png",
+      "descripcion": "Aquí hay una pizza helada",
+      "objeto": "pizza",
+      "propiedad_incorrecta": "helada",
+      "propiedades_correctas": ["caliente", "cocida"]
+    },
+    {
+      "id": 15,
+      "imagen": "sol-negro.png",
+      "descripcion": "Aquí hay un sol negro",
+      "objeto": "sol",
+      "propiedad_incorrecta": "negro",
+      "propiedades_correctas": ["amarillo", "naranja", "dorado"]
+    },
+    {
+      "id": 16,
+      "imagen": "sopa-con-tenedor.png",
+      "descripcion": "Aquí hay una sopa con tenedor",
+      "objeto": "sopa",
+      "propiedad_incorrecta": "tenedor",
+      "propiedades_correctas": ["cuchara", "sin tenedor"]
+    },
+    {
+      "id": 17,
+      "imagen": "tele-en-nevera.png",
+      "descripcion": "Aquí hay una televisión en la nevera",
+      "objeto": "televisión",
+      "propiedad_incorrecta": "nevera",
+      "propiedades_correctas": ["sala", "mesa", "pared"]
+    },
+    {
+      "id": 18,
+      "imagen": "tortuga-patines.png",
+      "descripcion": "Aquí hay una tortuga con patines",
+      "objeto": "tortuga",
+      "propiedad_incorrecta": "patines",
+      "propiedades_correctas": ["patas", "sin patines"]
+    },
+    {
+      "id": 19,
+      "imagen": "tres-piernas.png",
+      "descripcion": "Aquí hay algo con tres piernas",
+      "objeto": "persona",
+      "propiedad_incorrecta": "tres piernas",
+      "propiedades_correctas": ["dos piernas"]
+    },
+    {
+      "id": 20,
+      "imagen": "zanahoria-lapiz.png",
+      "descripcion": "Aquí hay una zanahoria usada como lápiz",
+      "objeto": "zanahoria",
+      "propiedad_incorrecta": "lápiz",
+      "propiedades_correctas": ["comida", "vegetal"]
+    },
+    {
+      "id": 21,
+      "imagen": "zanahoria-morada.png",
+      "descripcion": "Aquí hay una zanahoria morada",
+      "objeto": "zanahoria",
+      "propiedad_incorrecta": "morada",
+      "propiedades_correctas": ["naranja", "anaranjada"]
+    },
+    {
+      "id": 22,
+      "imagen": "zapato-plato.png",
+      "descripcion": "Aquí hay un zapato usado como plato",
+      "objeto": "zapato",
+      "propiedad_incorrecta": "plato",
+      "propiedades_correctas": ["pie", "calzado"]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "respuestas": [
+    {
+      "id": 1,
+      "imagen": "manzana_azul.png",
+      "respuestas_correctas": [
+        "la manzana no es azul, debe ser roja",
+        "está mal porque las manzanas son rojas",
+        "no puede ser azul, tiene que ser roja",
+        "las manzanas no son azules, son rojas",
+        "está incorrecto, la manzana debe ser roja",
+        "es imposible que una manzana sea azul",
+        "las manzanas son rojas no azules",
+        "está mal, debería ser roja",
+        "no es correcto, las manzanas son rojas o verdes",
+        "la manzana no puede ser azul"
+      ]
+    },
+    {
+      "id": 2,
+      "imagen": "tiburonconPiernas.png",
+      "respuestas_correctas": [
+        "el tiburón no tiene piernas, tiene aletas",
+        "está mal porque los tiburones tienen aletas no piernas",
+        "los tiburones no tienen piernas, tienen aletas",
+        "es incorrecto, un tiburón debe tener aletas",
+        "está mal, los tiburones no tienen piernas",
+        "es imposible que un tiburón tenga piernas",
+        "los tiburones tienen aletas no piernas",
+        "no es correcto, debería tener aletas",
+        "está mal porque los tiburones no tienen piernas",
+        "un tiburón no puede tener piernas"
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,356 @@
+{
+  "respuestas": [
+    {
+      "id": 1,
+      "imagen": "manzana-azul.png",
+      "respuestas_correctas": [
+        "la manzana no es azul, debe ser roja",
+        "está mal porque las manzanas son rojas",
+        "no puede ser azul, tiene que ser roja",
+        "las manzanas no son azules, son rojas",
+        "está incorrecto, la manzana debe ser roja",
+        "es imposible que una manzana sea azul",
+        "las manzanas son rojas no azules",
+        "está mal, debería ser roja",
+        "no es correcto, las manzanas son rojas o verdes",
+        "la manzana no puede ser azul"
+      ]
+    },
+    {
+      "id": 2,
+      "imagen": "tiburon-con-patas.png",
+      "respuestas_correctas": [
+        "el tiburón no tiene patas, tiene aletas",
+        "está mal porque los tiburones tienen aletas no patas",
+        "los tiburones no tienen patas, tienen aletas",
+        "es incorrecto, un tiburón debe tener aletas",
+        "está mal, los tiburones no tienen patas",
+        "es imposible que un tiburón tenga patas",
+        "los tiburones tienen aletas no patas",
+        "no es correcto, debería tener aletas",
+        "está mal porque los tiburones no tienen patas",
+        "un tiburón no puede tener patas"
+      ]
+    },
+    {
+      "id": 3,
+      "imagen": "almohada-piedra.png",
+      "respuestas_correctas": [
+        "la almohada no puede ser de piedra, debe ser suave",
+        "está mal porque las almohadas son suaves no de piedra",
+        "las almohadas no son de piedra, son suaves",
+        "es incorrecto, una almohada debe ser suave",
+        "está mal, las almohadas no son de piedra",
+        "es imposible que una almohada sea de piedra",
+        "las almohadas son suaves no de piedra",
+        "no es correcto, debería ser suave",
+        "está mal porque las almohadas no son de piedra",
+        "una almohada no puede ser de piedra"
+      ]
+    },
+    {
+      "id": 4,
+      "imagen": "Barco-Carretera.png",
+      "respuestas_correctas": [
+        "el barco no puede estar en la carretera, debe estar en el agua",
+        "está mal porque los barcos van en el agua no en la carretera",
+        "los barcos no van en la carretera, van en el agua",
+        "es incorrecto, un barco debe estar en el agua",
+        "está mal, los barcos no van en la carretera",
+        "es imposible que un barco esté en la carretera",
+        "los barcos van en el agua no en la carretera",
+        "no es correcto, debería estar en el agua",
+        "está mal porque los barcos no van en la carretera",
+        "un barco no puede estar en la carretera"
+      ]
+    },
+    {
+      "id": 5,
+      "imagen": "bicicleta-cuadrada.png",
+      "respuestas_correctas": [
+        "la bicicleta no puede ser cuadrada, las ruedas deben ser redondas",
+        "está mal porque las bicicletas tienen ruedas redondas no cuadradas",
+        "las bicicletas no son cuadradas, tienen ruedas redondas",
+        "es incorrecto, una bicicleta debe tener ruedas redondas",
+        "está mal, las bicicletas no son cuadradas",
+        "es imposible que una bicicleta sea cuadrada",
+        "las bicicletas tienen ruedas redondas no cuadradas",
+        "no es correcto, debería tener ruedas redondas",
+        "está mal porque las bicicletas no son cuadradas",
+        "una bicicleta no puede ser cuadrada"
+      ]
+    },
+    {
+      "id": 6,
+      "imagen": "carro-en-techo.png",
+      "respuestas_correctas": [
+        "el carro no puede estar en el techo, debe estar en la carretera",
+        "está mal porque los carros van en la carretera no en el techo",
+        "los carros no van en el techo, van en la carretera",
+        "es incorrecto, un carro debe estar en la carretera",
+        "está mal, los carros no van en el techo",
+        "es imposible que un carro esté en el techo",
+        "los carros van en la carretera no en el techo",
+        "no es correcto, debería estar en la carretera",
+        "está mal porque los carros no van en el techo",
+        "un carro no puede estar en el techo"
+      ]
+    },
+    {
+      "id": 7,
+      "imagen": "cerdo-volador.png",
+      "respuestas_correctas": [
+        "el cerdo no puede volar, los cerdos caminan",
+        "está mal porque los cerdos no vuelan, caminan",
+        "los cerdos no vuelan, caminan en el suelo",
+        "es incorrecto, un cerdo debe caminar no volar",
+        "está mal, los cerdos no vuelan",
+        "es imposible que un cerdo vuele",
+        "los cerdos caminan no vuelan",
+        "no es correcto, debería caminar",
+        "está mal porque los cerdos no vuelan",
+        "un cerdo no puede volar"
+      ]
+    },
+    {
+      "id": 8,
+      "imagen": "helado-caliente.png",
+      "respuestas_correctas": [
+        "el helado no puede estar caliente, debe estar frío",
+        "está mal porque los helados son fríos no calientes",
+        "los helados no son calientes, son fríos",
+        "es incorrecto, un helado debe estar frío",
+        "está mal, los helados no son calientes",
+        "es imposible que un helado esté caliente",
+        "los helados son fríos no calientes",
+        "no es correcto, debería estar frío",
+        "está mal porque los helados no son calientes",
+        "un helado no puede estar caliente"
+      ]
+    },
+    {
+      "id": 9,
+      "imagen": "lluvia-de-piedras.png",
+      "respuestas_correctas": [
+        "no puede llover piedras, debe llover agua",
+        "está mal porque la lluvia es de agua no de piedras",
+        "la lluvia no es de piedras, es de agua",
+        "es incorrecto, debe llover agua",
+        "está mal, no puede llover piedras",
+        "es imposible que llueva piedras",
+        "la lluvia es de agua no de piedras",
+        "no es correcto, debería llover agua",
+        "está mal porque no puede llover piedras",
+        "no puede llover piedras"
+      ]
+    },
+    {
+      "id": 10,
+      "imagen": "pecera-sin-agua.png",
+      "respuestas_correctas": [
+        "la pecera no puede estar sin agua, debe tener agua",
+        "está mal porque las peceras tienen agua no están vacías",
+        "las peceras no están sin agua, tienen agua",
+        "es incorrecto, una pecera debe tener agua",
+        "está mal, las peceras no están sin agua",
+        "es imposible que una pecera esté sin agua",
+        "las peceras tienen agua no están vacías",
+        "no es correcto, debería tener agua",
+        "está mal porque las peceras no están sin agua",
+        "una pecera no puede estar sin agua"
+      ]
+    },
+    {
+      "id": 11,
+      "imagen": "perro-alas.png",
+      "respuestas_correctas": [
+        "el perro no puede tener alas, los perros no vuelan",
+        "está mal porque los perros no tienen alas",
+        "los perros no tienen alas, tienen patas",
+        "es incorrecto, un perro no debe tener alas",
+        "está mal, los perros no tienen alas",
+        "es imposible que un perro tenga alas",
+        "los perros no tienen alas",
+        "no es correcto, no debería tener alas",
+        "está mal porque los perros no tienen alas",
+        "un perro no puede tener alas"
+      ]
+    },
+    {
+      "id": 12,
+      "imagen": "pez-gato.png",
+      "respuestas_correctas": [
+        "el pez no puede ser un gato, los peces son diferentes",
+        "está mal porque los peces no son gatos",
+        "los peces no son gatos, son peces",
+        "es incorrecto, un pez no debe parecer un gato",
+        "está mal, los peces no son gatos",
+        "es imposible que un pez sea un gato",
+        "los peces no son gatos",
+        "no es correcto, no debería parecer un gato",
+        "está mal porque los peces no son gatos",
+        "un pez no puede ser un gato"
+      ]
+    },
+    {
+      "id": 13,
+      "imagen": "pintando-con-banana.png",
+      "respuestas_correctas": [
+        "no se puede pintar con una banana, se usa un pincel",
+        "está mal porque se pinta con pincel no con banana",
+        "no se pinta con banana, se pinta con pincel",
+        "es incorrecto, se debe usar un pincel",
+        "está mal, no se puede pintar con banana",
+        "es imposible pintar con una banana",
+        "se pinta con pincel no con banana",
+        "no es correcto, debería usar un pincel",
+        "está mal porque no se puede pintar con banana",
+        "no se puede pintar con una banana"
+      ]
+    },
+    {
+      "id": 14,
+      "imagen": "pizza-helada.png",
+      "respuestas_correctas": [
+        "la pizza no puede estar helada, debe estar caliente",
+        "está mal porque las pizzas son calientes no heladas",
+        "las pizzas no son heladas, son calientes",
+        "es incorrecto, una pizza debe estar caliente",
+        "está mal, las pizzas no son heladas",
+        "es imposible que una pizza esté helada",
+        "las pizzas son calientes no heladas",
+        "no es correcto, debería estar caliente",
+        "está mal porque las pizzas no son heladas",
+        "una pizza no puede estar helada"
+      ]
+    },
+    {
+      "id": 15,
+      "imagen": "sol-negro.png",
+      "respuestas_correctas": [
+        "el sol no puede ser negro, debe ser amarillo o naranja",
+        "está mal porque el sol es amarillo no negro",
+        "el sol no es negro, es amarillo o naranja",
+        "es incorrecto, el sol debe ser amarillo",
+        "está mal, el sol no es negro",
+        "es imposible que el sol sea negro",
+        "el sol es amarillo no negro",
+        "no es correcto, debería ser amarillo",
+        "está mal porque el sol no es negro",
+        "el sol no puede ser negro"
+      ]
+    },
+    {
+      "id": 16,
+      "imagen": "sopa-con-tenedor.png",
+      "respuestas_correctas": [
+        "no se come la sopa con tenedor, se usa cuchara",
+        "está mal porque la sopa se come con cuchara no con tenedor",
+        "no se come sopa con tenedor, se come con cuchara",
+        "es incorrecto, se debe usar cuchara",
+        "está mal, no se puede comer sopa con tenedor",
+        "es imposible comer sopa con tenedor",
+        "la sopa se come con cuchara no con tenedor",
+        "no es correcto, debería usar cuchara",
+        "está mal porque no se come sopa con tenedor",
+        "no se puede comer sopa con tenedor"
+      ]
+    },
+    {
+      "id": 17,
+      "imagen": "tele-en-nevera.png",
+      "respuestas_correctas": [
+        "la televisión no puede estar en la nevera, debe estar en la sala",
+        "está mal porque las televisiones están en la sala no en la nevera",
+        "las televisiones no están en la nevera, están en la sala",
+        "es incorrecto, una televisión debe estar en la sala",
+        "está mal, las televisiones no están en la nevera",
+        "es imposible que una televisión esté en la nevera",
+        "las televisiones están en la sala no en la nevera",
+        "no es correcto, debería estar en la sala",
+        "está mal porque las televisiones no están en la nevera",
+        "una televisión no puede estar en la nevera"
+      ]
+    },
+    {
+      "id": 18,
+      "imagen": "tortuga-patines.png",
+      "respuestas_correctas": [
+        "la tortuga no puede tener patines, las tortugas no usan patines",
+        "está mal porque las tortugas no usan patines",
+        "las tortugas no usan patines, tienen patas",
+        "es incorrecto, una tortuga no debe tener patines",
+        "está mal, las tortugas no usan patines",
+        "es imposible que una tortuga tenga patines",
+        "las tortugas no usan patines",
+        "no es correcto, no debería tener patines",
+        "está mal porque las tortugas no usan patines",
+        "una tortuga no puede tener patines"
+      ]
+    },
+    {
+      "id": 19,
+      "imagen": "tres-piernas.png",
+      "respuestas_correctas": [
+        "no puede tener tres piernas, debe tener dos piernas",
+        "está mal porque las personas tienen dos piernas no tres",
+        "no se puede tener tres piernas, se tienen dos",
+        "es incorrecto, debe tener dos piernas",
+        "está mal, no se puede tener tres piernas",
+        "es imposible tener tres piernas",
+        "se tienen dos piernas no tres",
+        "no es correcto, debería tener dos piernas",
+        "está mal porque no se puede tener tres piernas",
+        "no se puede tener tres piernas"
+      ]
+    },
+    {
+      "id": 20,
+      "imagen": "zanahoria-lapiz.png",
+      "respuestas_correctas": [
+        "no se puede escribir con una zanahoria, se usa un lápiz",
+        "está mal porque se escribe con lápiz no con zanahoria",
+        "no se escribe con zanahoria, se escribe con lápiz",
+        "es incorrecto, se debe usar un lápiz",
+        "está mal, no se puede escribir con zanahoria",
+        "es imposible escribir con una zanahoria",
+        "se escribe con lápiz no con zanahoria",
+        "no es correcto, debería usar un lápiz",
+        "está mal porque no se puede escribir con zanahoria",
+        "no se puede escribir con una zanahoria"
+      ]
+    },
+    {
+      "id": 21,
+      "imagen": "zanahoria-morada.png",
+      "respuestas_correctas": [
+        "la zanahoria no puede ser morada, debe ser naranja",
+        "está mal porque las zanahorias son naranjas no moradas",
+        "las zanahorias no son moradas, son naranjas",
+        "es incorrecto, una zanahoria debe ser naranja",
+        "está mal, las zanahorias no son moradas",
+        "es imposible que una zanahoria sea morada",
+        "las zanahorias son naranjas no moradas",
+        "no es correcto, debería ser naranja",
+        "está mal porque las zanahorias no son moradas",
+        "una zanahoria no puede ser morada"
+      ]
+    },
+    {
+      "id": 22,
+      "imagen": "zapato-plato.png",
+      "respuestas_correctas": [
+        "no se puede comer en un zapato, se usa un plato",
+        "está mal porque se come en plato no en zapato",
+        "no se come en zapato, se come en plato",
+        "es incorrecto, se debe usar un plato",
+        "está mal, no se puede comer en zapato",
+        "es imposible comer en un zapato",
+        "se come en plato no en zapato",
+        "no es correcto, debería usar un plato",
+        "está mal porque no se puede comer en zapato",
+        "no se puede comer en un zapato"
+      ]
+    }
+  ]
+}

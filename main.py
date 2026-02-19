@@ -16,6 +16,20 @@ import threading
 import niveles_clasificacion
 from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
 from absurdos_seleccion import mostrar_seleccion_absurdos
+import importlib.util
+import sys
+# Import from absurdos-visuales folder (hyphens not allowed in Python module names)
+spec = importlib.util.spec_from_file_location("absurdos_visuales", "absurdos-visuales/absurdos_visuales.py")
+absurdos_visuales_module = importlib.util.module_from_spec(spec)
+sys.modules["absurdos_visuales"] = absurdos_visuales_module
+spec.loader.exec_module(absurdos_visuales_module)
+juego_absurdos_reconocimiento_voz = absurdos_visuales_module.juego_absurdos_reconocimiento_voz
+import speech_recognition as sr
+import spacy
+import pyttsx3
+
+# Variable global para el modelo de sentence-transformers (se carga al inicio)
+sentence_transformer_model = None
 
 def load_and_validate_dmax_map(coordenadas):
     """
@@ -3203,24 +3217,20 @@ def mostrar_menu_juegos(device):
             cv2.putText(screen, desc_texto, (desc_x, desc_y), 
                        font_desc, font_scale_desc, (255, 255, 255), thickness_desc)
     
+    # 5. Crear y configurar la ventana ANTES de dibujar (igual que calibrate_area.py)
+    # Crear una ventana para la proyección
+    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+    cv2.moveWindow("Menú de Juegos", 1920, 0)
+    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    
     # Dibujar las cards en la pantalla
     draw_game_cards(videobeam_screen, game_positions)
     # Dibujar card de bocina en la parte inferior derecha
     draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
 
-    # 5. Mostrar la Ventana en la Proyección del Videobeam
-    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
-    cv2.moveWindow("Menú de Juegos", 1920, 0)
-    cv2.waitKey(50)  # Pequeño delay para que la ventana se mueva
-    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)  # Forzar el tamaño
     # Escalar a la resolución del videobeam antes de mostrar
     videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
     cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
-    # Forzar pantalla completa después de mostrar
-    cv2.waitKey(50)
-    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
 
     # 6. Función para detectar el juego seleccionado
     def detectar_juego_seleccionado(x_touch, y_touch, game_positions):
@@ -3546,18 +3556,11 @@ def mostrar_menu_juegos(device):
                             frame_count = 0
                             juego_seleccionado_flag = True
                             break
-                        # Si es Absurdos Logicos, mostrar selección de tipo de absurdos
+                        # Si es Absurdos Logicos, ir directamente al juego de absurdos visuales
                         elif juego_seleccionado == "Absurdos Logicos":
-                            # No cerrar la ventana, reutilizarla para transición suave
-                            tipo_seleccionado = mostrar_seleccion_absurdos(
-                                device, coordenadas, dmax_map, dmin_map, draw_logo,
-                                existing_window_name="Menú de Juegos"
-                            )
-                            if tipo_seleccionado:
-                                print(f"Tipo de absurdo seleccionado: {tipo_seleccionado}")
-                                # Aquí puedes agregar la lógica para iniciar el juego con el tipo seleccionado
-                                # Por ejemplo: juego_absurdos(device, tipo=tipo_seleccionado, ...)
-                            # Volver al menú principal después de seleccionar tipo o cancelar
+                            # Ir directamente al juego de absurdos visuales (sin vista intermedia)
+                            juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, sentence_transformer_model)
+                            # El juego retornó, volver al menú principal
                             # Recrear el menú
                             videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
                             for y in range(view_height):
@@ -3569,6 +3572,7 @@ def mostrar_menu_juegos(device):
                             draw_logo(videobeam_screen)
                             draw_game_cards(videobeam_screen, game_positions)
                             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            
                             # Verificar si la ventana existe antes de recrearla
                             try:
                                 prop = cv2.getWindowProperty("Menú de Juegos", cv2.WND_PROP_VISIBLE)
@@ -3597,8 +3601,8 @@ def mostrar_menu_juegos(device):
                             cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                             # Reiniciar el contador de frames para evitar detecciones inmediatas
                             frame_count = 0
-                            juego_seleccionado_flag = True
-                            break
+                            juego_seleccionado_flag = True  # Establecer flag para salir del bucle de detección
+                            break  # Salir del bucle de detección de toques para mostrar el menú principal
                         else:
                             mostrar_mensaje_juego(juego_seleccionado)
                             
@@ -4108,6 +4112,44 @@ if __name__ == "__main__":
         exit(1)
     
     device = openni2.Device.open_any()
+
+    # Cargar modelo de sentence-transformers al inicio (para el juego de absurdos)
+    print("\n" + "=" * 60)
+    print("CARGANDO MODELO DE SENTENCE-TRANSFORMERS")
+    print("=" * 60)
+    try:
+        from sentence_transformers import SentenceTransformer
+        print("Cargando modelo 'paraphrase-multilingual-MiniLM-L12-v2'...")
+        print("(Esto puede tardar unos minutos la primera vez que se descarga)")
+        
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                sentence_transformer_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+                print("✓ Modelo de sentence-transformers cargado correctamente")
+                break
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (attempt + 1)
+                    print(f"✗ Intento {attempt + 1} fallido: {e}")
+                    print(f"  Reintentando en {wait_time} segundos...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"✗ Error al cargar modelo después de {max_retries} intentos: {e}")
+                    print("  El juego de absurdos puede no funcionar correctamente.")
+                    print("  Verifica tu conexión a internet e intenta nuevamente.")
+                    sentence_transformer_model = None
+    except ImportError:
+        print("✗ sentence-transformers no está instalado.")
+        print("  Instálalo con: uv pip install sentence-transformers")
+        sentence_transformer_model = None
+    except Exception as e:
+        print(f"✗ Error inesperado al cargar modelo: {e}")
+        sentence_transformer_model = None
+    
+    print("=" * 60 + "\n")
 
     # Mostrar el menú de juegos automáticamente al ejecutar
     print("=" * 60)
