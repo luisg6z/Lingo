@@ -1,0 +1,4 @@
+"""
+Juego historia feature (placeholder)
+"""
+
