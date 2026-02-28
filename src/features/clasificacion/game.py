@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, project_root)
 from src.core.calibration import load_and_validate_dmax_map
 from src.core.detection import detect_color_and_shape
+from src.core.font_utils import put_text_ubuntu
 
 def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     # Cargar las coordenadas desde el archivo JSON
@@ -336,8 +337,7 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
 
                 # Dibujar el contorno y etiqueta en deteccion_visual
                 cv2.drawContours(deteccion_visual, [cnt], -1, (0, 255, 0), 2)
-                cv2.putText(deteccion_visual, f"{figura_tipo}, {color_name_lower}", (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                put_text_ubuntu(deteccion_visual, f"{figura_tipo}, {color_name_lower}", (x, y - 10), 0.5, (0, 255, 0), 2)
 
             # Eliminar figuras que no fueron actualizadas
             keys_to_remove = set(figuras_a_dibujar.keys()) - figuras_actualizadas

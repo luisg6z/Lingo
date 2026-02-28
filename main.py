@@ -12,6 +12,7 @@ import random
 import mediapipe as mp
 import json
 import math
+import re
 import threading
 import niveles_clasificacion
 from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
@@ -25,11 +26,234 @@ sys.modules["absurdos_visuales"] = absurdos_visuales_module
 spec.loader.exec_module(absurdos_visuales_module)
 juego_absurdos_reconocimiento_voz = absurdos_visuales_module.juego_absurdos_reconocimiento_voz
 import speech_recognition as sr
+# Import confetti system
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
+from src.features.confetti import ConfettiSystem
+from src.components.rectangular_button import draw_rectangular_button, is_point_in_rectangular_button
+from src.components.circular_button import draw_circular_button, is_point_in_circular_button
+# Juego historia: voice listen and Ollama validation
+_historia_story_voice = None
+def _get_historia_story_voice():
+    global _historia_story_voice
+    if _historia_story_voice is None:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        story_voice_path = os.path.join(project_root, "src", "features", "juego-historia", "story_voice.py")
+        spec_sv = importlib.util.spec_from_file_location("historia_story_voice", story_voice_path)
+        mod_sv = importlib.util.module_from_spec(spec_sv)
+        spec_sv.loader.exec_module(mod_sv)
+        _historia_story_voice = mod_sv
+    return _historia_story_voice
 import spacy
 import pyttsx3
 
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
+# Import font utilities
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
+try:
+    from src.core.font_utils import get_ubuntu_font
+except ImportError:
+    get_ubuntu_font = None
+
+
+def put_text_ubuntu(img, text, position, font_scale, color, thickness, line_type=cv2.LINE_AA, font_face=None, bold=False):
+    """
+    Render text using Ubuntu font from resources/fonts.
+    This replaces cv2.putText to ensure consistent Ubuntu font usage.
+    font_face parameter is accepted for compatibility but ignored (always uses Ubuntu).
+    bold: If True, use bold Ubuntu font variant
+    """
+    if _PIL_AVAILABLE:
+        try:
+            img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                # Always use Ubuntu font from resources/fonts
+                if get_ubuntu_font:
+                    font = get_ubuntu_font(font_scale=font_scale, bold=bold)
+                else:
+                    font = ImageFont.load_default()
+            except Exception:
+                font = ImageFont.load_default()
+            x, y = position
+            # Get text bounding box for accurate positioning
+            try:
+                bbox = draw.textbbox((0, 0), text, font=font)
+            except AttributeError:
+                bbox = font.getbbox(text) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+            color_rgb = (color[2], color[1], color[0])
+            draw.text((x, y), text, fill=color_rgb, font=font)
+            img_result = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            img[:] = img_result[:]
+        except Exception as e:
+            # Fallback to OpenCV if PIL fails
+            fallback_face = font_face if font_face else cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(img, text, position, fallback_face, font_scale, color, thickness, line_type)
+    else:
+        # Fallback to OpenCV if PIL not available
+        fallback_face = font_face if font_face else cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(img, text, position, fallback_face, font_scale, color, thickness, line_type)
+
+
+def calculate_word_positions(text, start_x, start_y, font_scale, max_width, bold=False):
+    """
+    Calculate the exact positions (start and end x coordinates) for each word in the text.
+    Handles word wrapping and uses PIL for accurate text measurement.
+    
+    Args:
+        text: The text string to analyze
+        start_x: Starting x coordinate
+        start_y: Starting y coordinate (baseline)
+        font_scale: Font scale factor
+        max_width: Maximum width before wrapping to next line
+        bold: Whether to use bold font
+    
+    Returns:
+        List of dicts with keys: 'word', 'x_start', 'x_end', 'y', 'line_index'
+    """
+    from src.core.font_utils import get_ubuntu_font
+    
+    words = text.split()
+    word_positions = []
+    x_current = start_x
+    y_current = start_y
+    line_index = 0
+    
+    try:
+        from PIL import Image, ImageDraw
+        font = get_ubuntu_font(font_scale=font_scale, bold=bold)
+        img_pil = Image.new('RGB', (100, 100), (0, 0, 0))  # Temporary image for measurement
+        draw = ImageDraw.Draw(img_pil)
+        
+        for word in words:
+            # Measure word width (with space after it)
+            word_with_space = word + " "
+            try:
+                bbox = draw.textbbox((0, 0), word_with_space, font=font)
+                word_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font.getbbox(word_with_space) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                word_width = bbox[2] - bbox[0]
+            
+            # Check if word fits on current line
+            if x_current + word_width > max_width and x_current > start_x:
+                # Move to next line
+                y_current += int(font_scale * 35)  # Approximate line height
+                x_current = start_x
+                line_index += 1
+            
+            # Store word position
+            word_start = x_current
+            word_end = x_current + word_width
+            
+            word_positions.append({
+                'word': word,
+                'x_start': word_start,
+                'x_end': word_end,
+                'y': y_current,
+                'line_index': line_index
+            })
+            
+            x_current = word_end
+        
+    except Exception as e:
+        # Fallback to OpenCV measurement
+        font_face = cv2.FONT_HERSHEY_SIMPLEX
+        for word in words:
+            word_with_space = word + " "
+            (word_width, word_height), baseline = cv2.getTextSize(word_with_space, font_face, font_scale, 2)
+            
+            if x_current + word_width > max_width and x_current > start_x:
+                y_current += word_height + 5
+                x_current = start_x
+                line_index += 1
+            
+            word_start = x_current
+            word_end = x_current + word_width
+            
+            word_positions.append({
+                'word': word,
+                'x_start': word_start,
+                'x_end': word_end,
+                'y': y_current,
+                'line_index': line_index
+            })
+            
+            x_current = word_end
+    
+    return word_positions
+
+
+def _put_text_safe_historia(img, text, position, font_face, font_scale, color, thickness, line_type=cv2.LINE_AA, bold=False):
+    """
+    Render text using Ubuntu font. Wrapper for compatibility.
+    """
+    put_text_ubuntu(img, text, position, font_scale, color, thickness, line_type, font_face, bold=bold)
+
+
 # Variable global para el modelo de sentence-transformers (se carga al inicio)
 sentence_transformer_model = None
+
+# TTS: speak card name when selected in juego-historia (non-blocking, daemon thread)
+# Articles and pronunciation for subjects (characters) and places
+_HISTORIA_TTS_SUJETO = {
+    "Niño": "El niño",
+    "Niña": "La niña",
+    "Doctor": "El doctor",
+    "Maestra": "La maestra",
+    "Policia": "El policía",
+    "Perro": "El perro",
+}
+_HISTORIA_TTS_LUGAR = {
+    "Calle": "La calle",
+    "Clinica": "La clínica",
+    "Estacion-Policia": "La estación de policía",
+    "Escuela": "La escuela",
+    "Casa": "La casa",
+    "Parque": "El parque",
+}
+# Pronunciation only for actions (no article)
+_HISTORIA_TTS_ACCION = {
+    "Dar": "Dar",
+    "Ayudar": "Ayudar",
+    "Correr": "Correr",
+    "Jugar": "Jugar",
+    "Llamar": "Llamar",
+    "Trabajar": "Trabajar",
+}
+
+def _historia_tts_speak(name, tipo=None):
+    """Speak the given name using pyttsx3 in a daemon thread (for sujeto/accion/lugar selection).
+    tipo: 'sujeto' | 'accion' | 'lugar' to use the correct article; None = use name as-is with pronunciation fix.
+    """
+    if tipo == "sujeto":
+        text = _HISTORIA_TTS_SUJETO.get(name, name)
+    elif tipo == "lugar":
+        text = _HISTORIA_TTS_LUGAR.get(name, name)
+    elif tipo == "accion":
+        text = _HISTORIA_TTS_ACCION.get(name, name)
+    else:
+        text = name
+    def _run():
+        try:
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 150)
+            for v in engine.getProperty("voices"):
+                if "spanish" in v.name.lower() or "español" in v.name.lower():
+                    engine.setProperty("voice", v.id)
+                    break
+            engine.say(text)
+            engine.runAndWait()
+        except Exception as e:
+            print(f"TTS error: {e}")
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 def load_and_validate_dmax_map(coordenadas):
     """
@@ -237,7 +461,7 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
                     cv2.drawContours(roi, [cnt], -1, (0, 255, 0), 2)
                     x, y, w, h = cv2.boundingRect(cnt)
                     label_text = f"{shape} {color_name}"
-                    cv2.putText(roi, label_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                    put_text_ubuntu(roi, label_text, (x, y - 10), 0.6, (255, 0, 0), 2)
 
         cv2.imshow("Formas Detectadas", roi)
 
@@ -282,11 +506,12 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
             touch_mask_filtered = cv2.GaussianBlur(touch_mask_filtered, (7, 7), 0)
             touch_mask_lowpass = cv2.boxFilter(touch_mask_filtered, ddepth=-1, ksize=(3, 3))
             
-            # Aplicar un umbral para consolidar las áreas de toque
-            _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 150, 255, cv2.THRESH_BINARY)
+            # Aplicar un umbral más estricto para reducir toques fantasma (180 en lugar de 150)
+            _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 180, 255, cv2.THRESH_BINARY)
 
             kernel = np.ones((3, 3), np.uint8)
             touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_OPEN, kernel)
+            touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_CLOSE, kernel)
 
             # Historial de toques para filtrado temporal
             touch_history.append(touch_mask_final)
@@ -318,10 +543,10 @@ def piano(device, videobeam_resolution=(1280, 800), min_contour_area=500, max_co
                 mask_shape = np.zeros_like(touch_mask_final)
                 cv2.drawContours(mask_shape, [cnt], -1, 255, thickness=cv2.FILLED)
 
-                # Verificar si hay toque dentro de la figura
-                touch_in_shape = cv2.bitwise_and(touch_mask_final, mask_shape)
-
-                if np.any(touch_in_shape > 0):
+                # Verificar toque usando máscara acumulada (requiere persistencia en varios cuadros para evitar fantasmas)
+                touch_in_shape = cv2.bitwise_and(accumulated_mask, mask_shape)
+                min_overlap_pixels = 60  # Mínimo de píxeles presentes en al menos 2 cuadros
+                if np.sum(touch_in_shape >= 2 * 255) >= min_overlap_pixels:
                     if not figure_status[color_name]['active']:
                         print(f'Toque detectado en el área del color {color_name}')
 
@@ -662,7 +887,7 @@ def juego_memoria(device):
             cv2.imshow("Detección de Formas y Colores", bgr_data)
 
             if not assigned_animals:
-                cv2.putText(bgr_data, "Presiona 'c' para asignar animales", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                put_text_ubuntu(bgr_data, "Presiona 'c' para asignar animales", (20, 30), 0.7, (0, 255, 0), 2)
 
                 if cv2.waitKey(1) & 0xFF == ord('c'):
                     captured_figures = detected_shapes[:]
@@ -988,11 +1213,23 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     rgb_stream.start()
     depth_stream.start()
 
+    # Reducir toques fantasma: persistencia y cooldown
+    from collections import defaultdict
+    touch_history_piezas = defaultdict(list)
+    last_valid_touch_time_piezas = time.time()
+    touch_cooldown_piezas = 0.2
+    min_touch_frames_piezas = 2
+    min_touch_area_piezas = 150
+    max_touch_area_piezas = 50000
+    max_history_age_piezas = 1.0
+
     while True:
         frame = rgb_stream.read_frame()
         depth_frame = depth_stream.read_frame()
         if frame is None or depth_frame is None:
             continue
+
+        current_time_piezas = time.time()
 
         rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
         bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
@@ -1003,34 +1240,49 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
         depth_data = cv2.flip(depth_data, 1)
         depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
 
-        # Crear la máscara que considera solo los valores entre dmin y dmax
+        # Crear la máscara (umbral más estricto 180 y MORPH_CLOSE para reducir fantasmas)
         touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-
         touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=5)
         touch_mask_filtered = cv2.GaussianBlur(touch_mask_filtered, (7, 7), 0)
         touch_mask_lowpass = cv2.boxFilter(touch_mask_filtered, ddepth=-1, ksize=(3, 3))
-
-        # Umbralización
-        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 150, 255, cv2.THRESH_BINARY)
-
-        # Operaciones morfológicas
+        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 180, 255, cv2.THRESH_BINARY)
         kernel = np.ones((3, 3), np.uint8)
         touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_OPEN, kernel)
+        touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_CLOSE, kernel)
 
-        # Encontrar los contornos de los toques
         contours, _ = cv2.findContours(touch_mask_final, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Procesar cada punto de los contornos
-        touch_points = []
+        # Un centroide por contorno, filtro por área y persistencia
+        raw_candidates = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 50:  # Ajusta el umbral según sea necesario
-                for point in contour:
-                    cx, cy = point[0]
-                    # Transformar el punto al espacio del viewport
+            if min_touch_area_piezas <= area <= max_touch_area_piezas:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
                     x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
                     y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
-                    touch_points.append([x_touch, y_touch])
+                    raw_candidates.append((x_touch, y_touch, area))
+
+        for key in list(touch_history_piezas.keys()):
+            touch_history_piezas[key] = [t for t in touch_history_piezas[key] if current_time_piezas - t[3] < max_history_age_piezas]
+            if not touch_history_piezas[key]:
+                del touch_history_piezas[key]
+
+        touch_points = []
+        for (x_touch, y_touch, area) in raw_candidates:
+            touch_key = (x_touch // 25, y_touch // 25)
+            touch_history_piezas[touch_key].append((x_touch, y_touch, area, current_time_piezas))
+            if len(touch_history_piezas[touch_key]) >= min_touch_frames_piezas and current_time_piezas - last_valid_touch_time_piezas > touch_cooldown_piezas:
+                recent = touch_history_piezas[touch_key][-min_touch_frames_piezas:]
+                if all(current_time_piezas - t[3] < 1.0 for t in recent):
+                    areas = [t[2] for t in recent]
+                    if min(areas) > 0 and max(areas) / min(areas) < 3.5 and min_touch_area_piezas <= sum(areas) / len(areas) <= max_touch_area_piezas:
+                        touch_points.append([x_touch, y_touch])
+                        if touch_key in touch_history_piezas:
+                            del touch_history_piezas[touch_key]
+                        last_valid_touch_time_piezas = current_time_piezas
+                        break
 
         if not piezas_fisicas:
             # Mover las figuras virtuales asociadas a los toques
@@ -1121,8 +1373,7 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
 
                 # Dibujar el contorno y etiqueta en deteccion_visual
                 cv2.drawContours(deteccion_visual, [cnt], -1, (0, 255, 0), 2)
-                cv2.putText(deteccion_visual, f"{figura_tipo}, {color_name_lower}", (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                put_text_ubuntu(deteccion_visual, f"{figura_tipo}, {color_name_lower}", (x, y - 10), 0.5, (0, 255, 0), 2)
 
             # Eliminar figuras que no fueron actualizadas
             keys_to_remove = set(figuras_a_dibujar.keys()) - figuras_actualizadas
@@ -1326,7 +1577,7 @@ def juego_handprint(device, offset=10):
             text_size = cv2.getTextSize(name, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
             text_x = x1 + (button_width - text_size[0]) // 2
             text_y = y1 + (button_height + text_size[1]) // 2
-            cv2.putText(videobeam_screen, name, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            put_text_ubuntu(videobeam_screen, name, (text_x, text_y), 0.6, (255, 255, 255), 2)
 
     # Función para detectar toques en los botones
     def detect_color_touch(touch_mask, buttons):
@@ -1367,21 +1618,16 @@ def juego_handprint(device, offset=10):
         depth_data = cv2.flip(depth_data, 1)
         depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
 
-        # Crear la máscara de toques
+        # Crear la máscara de toques (umbral 180 y MORPH_CLOSE para reducir fantasmas)
         touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
         touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=5)
-
         touch_mask_lowpass = cv2.boxFilter(touch_mask_filtered, ddepth=-1, ksize=(3, 3))
-
-        # Aplicar umbral para eliminar manchas residuales y consolidar las áreas de toque
-        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 150, 255, cv2.THRESH_BINARY)
-
+        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 180, 255, cv2.THRESH_BINARY)
         kernel = np.ones((3, 3), np.uint8)
         touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_OPEN, kernel)
+        touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_CLOSE, kernel)
 
-        # Detectar los toques y mapearlos
         contours, _ = cv2.findContours(touch_mask_final, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-       
         touched_color = detect_color_touch(touch_mask_final, buttons)
         if touched_color is not None:
             draw_color = touched_color
@@ -1522,7 +1768,7 @@ def juego_personalizacion(device):
             # Dibujar un rectángulo alrededor de la imagen para indicar selección
             cv2.rectangle(screen, (x, y), (x + w, y + h), (255, 255, 255), 2)
             # Dibujar el nombre del dibujo
-            cv2.putText(screen, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            put_text_ubuntu(screen, name, (x, y - 10), 0.6, (255, 255, 255), 2)
 
     # Seleccionar el primer dibujo por defecto
     selected_drawing = list(drawing_images.keys())[0]
@@ -1725,11 +1971,23 @@ def juego_personalizacion(device):
         cv2.setWindowProperty("Dibujo", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.imshow("Dibujo", screen)
 
+    # Reducir toques fantasma en dibujo: persistencia y cooldown
+    from collections import defaultdict
+    touch_history_draw = defaultdict(list)
+    last_valid_touch_time_draw = time.time()
+    touch_cooldown_draw = 0.2
+    min_touch_frames_draw = 2
+    min_touch_area_draw = 150
+    max_touch_area_draw = 50000
+    max_history_age_draw = 1.0
+
     while True:
         frame = rgb_stream.read_frame()
         depth_frame = depth_stream.read_frame()
         if frame is None or depth_frame is None:
             continue
+
+        current_time_draw = time.time()
 
         rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
         bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
@@ -1740,34 +1998,46 @@ def juego_personalizacion(device):
         depth_data = cv2.flip(depth_data, 1)
         depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
 
-        # Crear la máscara que considera solo los valores entre dmin y dmax
+        # Máscara más estricta (umbral 180, MORPH_CLOSE) para reducir fantasmas
         touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-
-        # Filtrar y procesar la máscara de toques
         touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=5)
         touch_mask_filtered = cv2.GaussianBlur(touch_mask_filtered, (7, 7), 0)
         touch_mask_lowpass = cv2.boxFilter(touch_mask_filtered, ddepth=-1, ksize=(3, 3))
-
-        # Umbralización
-        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 150, 255, cv2.THRESH_BINARY)
-
-        # Operaciones morfológicas
+        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 180, 255, cv2.THRESH_BINARY)
         kernel = np.ones((3, 3), np.uint8)
         touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_OPEN, kernel)
+        touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_CLOSE, kernel)
 
-        # Encontrar los contornos de los toques
         contours, _ = cv2.findContours(touch_mask_final, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Procesar cada punto de los contornos
-        touch_points = []
+        raw_candidates_draw = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 50:
+            if min_touch_area_draw <= area <= max_touch_area_draw:
                 M = cv2.moments(contour)
                 if M['m00'] != 0:
                     cx = int(M['m10'] / M['m00'])
                     cy = int(M['m01'] / M['m00'])
-                    touch_points.append((cx, cy))
+                    raw_candidates_draw.append((cx, cy, area))
+
+        for key in list(touch_history_draw.keys()):
+            touch_history_draw[key] = [t for t in touch_history_draw[key] if current_time_draw - t[3] < max_history_age_draw]
+            if not touch_history_draw[key]:
+                del touch_history_draw[key]
+
+        touch_points = []
+        for (cx, cy, area) in raw_candidates_draw:
+            touch_key = (cx // 20, cy // 20)
+            touch_history_draw[touch_key].append((cx, cy, area, current_time_draw))
+            if len(touch_history_draw[touch_key]) >= min_touch_frames_draw and current_time_draw - last_valid_touch_time_draw > touch_cooldown_draw:
+                recent = touch_history_draw[touch_key][-min_touch_frames_draw:]
+                if all(current_time_draw - t[3] < 1.0 for t in recent):
+                    areas = [t[2] for t in recent]
+                    if min(areas) > 0 and max(areas) / min(areas) < 3.5 and min_touch_area_draw <= sum(areas) / len(areas) <= max_touch_area_draw:
+                        touch_points.append((cx, cy))
+                        if touch_key in touch_history_draw:
+                            del touch_history_draw[touch_key]
+                        last_valid_touch_time_draw = current_time_draw
+                        break
 
         # Depuración: mostrar touch_points
         # print(f"Touch points (Window coordinates): {touch_points}")
@@ -1802,8 +2072,8 @@ def juego_personalizacion(device):
             success = cv2.imwrite(filename, drawing_area)
             if success:
                 # Mostrar una confirmación en la pantalla
-                cv2.putText(videobeam_screen, f"Dibujo guardado como {sanitized_child_name}_{sanitized_group}.png", 
-                            (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                put_text_ubuntu(videobeam_screen, f"Dibujo guardado como {sanitized_child_name}_{sanitized_group}.png", 
+                            (50, 50), 1, (0, 255, 0), 2)
                 print(f"Dibujo guardado exitosamente en {filename}")
             else:
                 print(f"Error al guardar el dibujo en {filename}")
@@ -2158,8 +2428,7 @@ def simon_dice(device):
             y_position = avatar_y2 + avatar_height // 2
         
         # Dibujar la "X" sobre el avatar
-        cv2.putText(videobeam_screen, "X", (x_position, y_position),
-                    cv2.FONT_HERSHEY_SIMPLEX, 5, (0, 0, 255), 10)
+        put_text_ubuntu(videobeam_screen, "X", (x_position, y_position), 5, (0, 0, 255), 10)
         cv2.imshow("Videobeam", videobeam_screen)
         cv2.waitKey(2000)  # Mostrar la X por 2 segundos
 
@@ -2188,11 +2457,23 @@ def simon_dice(device):
 
         return current_player, sequence
 
+    # Reducir toques fantasma en Simon: persistencia y cooldown
+    from collections import defaultdict
+    touch_history_simon = defaultdict(list)
+    last_valid_touch_time_simon = time.time()
+    touch_cooldown_simon = 0.2
+    min_touch_frames_simon = 2
+    min_touch_area_simon = 150
+    max_touch_area_simon = 50000
+    max_history_age_simon = 1.0
+
     while True:
         frame = rgb_stream.read_frame()
         depth_frame = depth_stream.read_frame()
         if frame is None or depth_frame is None:
             continue
+
+        current_time_simon = time.time()
 
         # Extraer los datos de las imágenes
         rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
@@ -2204,29 +2485,46 @@ def simon_dice(device):
         depth_data = cv2.flip(depth_data, 1)
         depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
 
-        # Crear la máscara que considera solo los valores entre dmin y dmax
+        # Máscara más estricta (umbral 180, MORPH_CLOSE) para reducir fantasmas
         touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-
         touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=5)
         touch_mask_filtered = cv2.GaussianBlur(touch_mask_filtered, (7, 7), 0)
         touch_mask_lowpass = cv2.boxFilter(touch_mask_filtered, ddepth=-1, ksize=(3, 3))
-
-        # Umbralización
-        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 150, 255, cv2.THRESH_BINARY)
-
-        # Operaciones morfológicas
+        _, touch_mask_final = cv2.threshold(touch_mask_lowpass, 180, 255, cv2.THRESH_BINARY)
         kernel = np.ones((3, 3), np.uint8)
         touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_OPEN, kernel)
+        touch_mask_final = cv2.morphologyEx(touch_mask_final, cv2.MORPH_CLOSE, kernel)
 
-        # Encontrar los contornos de los toques
         contours, _ = cv2.findContours(touch_mask_final, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        touch_points = []
+        raw_candidates_simon = []
         for contour in contours:
-            M = cv2.moments(contour)
-            if M['m00'] != 0:
-                cx = int(M['m10'] / M['m00'])
-                cy = int(M['m01'] / M['m00'])
-                touch_points.append((cx, cy))
+            area = cv2.contourArea(contour)
+            if min_touch_area_simon <= area <= max_touch_area_simon:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    raw_candidates_simon.append((cx, cy, area))
+
+        for key in list(touch_history_simon.keys()):
+            touch_history_simon[key] = [t for t in touch_history_simon[key] if current_time_simon - t[3] < max_history_age_simon]
+            if not touch_history_simon[key]:
+                del touch_history_simon[key]
+
+        touch_points = []
+        for (cx, cy, area) in raw_candidates_simon:
+            touch_key = (cx // 20, cy // 20)
+            touch_history_simon[touch_key].append((cx, cy, area, current_time_simon))
+            if len(touch_history_simon[touch_key]) >= min_touch_frames_simon and current_time_simon - last_valid_touch_time_simon > touch_cooldown_simon:
+                recent = touch_history_simon[touch_key][-min_touch_frames_simon:]
+                if all(current_time_simon - t[3] < 1.0 for t in recent):
+                    areas = [t[2] for t in recent]
+                    if min(areas) > 0 and max(areas) / min(areas) < 3.5 and min_touch_area_simon <= sum(areas) / len(areas) <= max_touch_area_simon:
+                        touch_points.append((cx, cy))
+                        if touch_key in touch_history_simon:
+                            del touch_history_simon[touch_key]
+                        last_valid_touch_time_simon = current_time_simon
+                        break
 
         if len(touch_points) == 0 and button_pressed:
             button_pressed = False
@@ -2716,6 +3014,4171 @@ def juego_tic_tac_toe(device):
     rgb_stream.stop()
     cv2.destroyAllWindows()
 
+def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
+    """
+    Muestra la vista de selección de historias con 6 cards.
+    
+    Args:
+        device: Dispositivo OpenNI2
+        coordenadas: Diccionario con las coordenadas de calibración
+        dmax_map: Mapa de profundidad máximo
+        dmin_map: Mapa de profundidad mínimo
+        draw_logo_func: Función para dibujar el logo en la pantalla
+        existing_window_name: Nombre de ventana existente para reutilizar (opcional)
+    
+    Returns:
+        str o None: Nombre de la historia seleccionada o None si se canceló
+    """
+    # Extraer coordenadas
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+    
+    # Tamaño de la pantalla del videobeam (viewport)
+    view_width = 1280
+    view_height = 800
+    
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """Escala una imagen de la resolución fuente a la resolución del videobeam."""
+        if image is None or image.size == 0:
+            return image
+        scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+        return scaled_image
+    
+    # Crear fondo
+    historias_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de colores (mismo estilo que el menú)
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        historias_screen[y, :] = [b, g, r]
+    
+    # Dibujar el logo (un poco más pequeño - 95% del tamaño original)
+    def draw_logo_smaller_historias(screen):
+        logo_loaded_local = False
+        logo_image_local = None
+        
+        try:
+            if os.path.exists("images/logo.png"):
+                logo_image_local = cv2.imread("images/logo.png", cv2.IMREAD_UNCHANGED)
+                if logo_image_local is not None:
+                    logo_loaded_local = True
+            elif os.path.exists("images/logo.svg"):
+                try:
+                    logo_surface = pygame.image.load("images/logo.svg")
+                    logo_string = pygame.image.tostring(logo_surface, "RGBA")
+                    logo_np = np.frombuffer(logo_string, np.uint8)
+                    logo_image_local = logo_np.reshape((logo_surface.get_height(), logo_surface.get_width(), 4))
+                    logo_image_local = cv2.cvtColor(logo_image_local, cv2.COLOR_RGBA2BGRA)
+                    logo_loaded_local = True
+                except Exception:
+                    logo_loaded_local = False
+        except Exception:
+            logo_loaded_local = False
+        
+        if logo_loaded_local and logo_image_local is not None:
+            logo_height = 114  # 95% de 120 (casi imperceptible)
+            if len(logo_image_local.shape) == 3:
+                original_height, original_width = logo_image_local.shape[:2]
+            else:
+                original_height, original_width = logo_image_local.shape[0], logo_image_local.shape[1]
+            
+            aspect_ratio = original_width / original_height
+            logo_width = int(logo_height * aspect_ratio)
+            logo_resized = cv2.resize(logo_image_local, (logo_width, logo_height), interpolation=cv2.INTER_AREA)
+            logo_x = (view_width - logo_width) // 2
+            logo_y = 20  # Subido un poco más (de 30 a 20)
+            
+            if logo_x >= 0 and logo_y >= 0 and logo_x + logo_width <= view_width and logo_y + logo_height <= view_height:
+                if len(logo_resized.shape) == 3 and logo_resized.shape[2] == 4:
+                    alpha = logo_resized[:, :, 3] / 255.0
+                    for c in range(3):
+                        screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c] = (
+                            alpha * logo_resized[:, :, c] + (1 - alpha) * screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c]
+                        )
+                elif len(logo_resized.shape) == 3:
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_resized[:, :, :3]
+                else:
+                    logo_bgr = cv2.cvtColor(logo_resized, cv2.COLOR_GRAY2BGR)
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_bgr
+        else:
+            # Si no hay logo, usar la función original
+            draw_logo_func(screen)
+    
+    draw_logo_smaller_historias(historias_screen)
+    
+    # Función para dibujar card redonda con X (estilo infantil) - en la parte superior derecha
+    def draw_close_card_historias(screen, elevated=False):
+        """
+        Dibuja una card redonda con X en el centro, estilo infantil, roja con X blanca
+        en la parte superior derecha
+        
+        Args:
+            screen: Pantalla donde dibujar
+            elevated: Si True, la card se dibuja elevada (efecto de levantarse)
+        """
+        # Posición base del lado derecho (parte superior)
+        base_card_radius = 50
+        card_margin_x = 180
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (view_width - card_margin_x - int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (100, 0, 0))
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente rojo pastel (simulado con círculos concéntricos)
+        # Hacer el color más brillante si está elevada
+        color_intensity = 1.15 if elevated else 1.0
+        base_red_light = int(100 * color_intensity)
+        base_red_medium = int(50 * color_intensity)
+        base_red_dark = int(30 * color_intensity)
+        # Limitar valores a 255
+        base_red_light = min(255, base_red_light)
+        base_red_medium = min(255, base_red_medium)
+        base_red_dark = min(255, base_red_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (base_red_light, base_red_light, 255), -1)  # Rojo pastel claro
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (base_red_medium, base_red_medium, 255), -1)  # Rojo pastel medio
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (base_red_dark, base_red_dark, 255), -1)  # Rojo más intenso
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la X blanca en el centro
+        x_size = int(card_radius * 0.5)
+        thickness = 5
+        # Sombra de la X
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] - x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] + x_size + 2), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] + x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] - x_size + 2), 
+                (150, 150, 150), thickness)
+        # X blanca principal
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] - x_size), 
+                (card_center[0] + x_size, card_center[1] + x_size), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] + x_size), 
+                (card_center[0] + x_size, card_center[1] - x_size), 
+                (255, 255, 255), thickness)
+    
+    # Variables para la card de cerrar (necesarias para la detección)
+    close_card_radius_historias = 50
+    close_card_margin_x_historias = 180
+    close_card_margin_y_historias = 80
+    close_card_center_x_historias = view_width - close_card_margin_x_historias - close_card_radius_historias
+    close_card_center_y_historias = close_card_margin_y_historias + close_card_radius_historias
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    close_card_detection_size_historias = close_card_radius_historias * 2.4
+    close_card_detection_x_historias = close_card_center_x_historias - close_card_radius_historias * 1.2
+    close_card_detection_y_historias = close_card_center_y_historias - close_card_radius_historias * 1.2
+    close_card_detection_w_historias = close_card_detection_size_historias
+    close_card_detection_h_historias = close_card_detection_size_historias
+    
+    # Función para detectar si se tocó la card de cerrar
+    def detectar_close_card_touch_historias(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de cerrar"""
+        return (close_card_detection_x_historias <= x_touch <= close_card_detection_x_historias + close_card_detection_w_historias and
+                close_card_detection_y_historias <= y_touch <= close_card_detection_y_historias + close_card_detection_h_historias)
+    
+    # Definir las 6 historias con las imágenes de sujetos
+    historias = [
+        {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/niño.png"},
+        {"nombre": "Niña", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Niña.png"},
+        {"nombre": "Doctor", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Doctor.png"},
+        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"},
+        {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/policia.png"},
+        {"nombre": "Perro", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/perro.png"}
+    ]
+    
+    # Cargar imágenes de las historias si existen
+    historia_images = {}
+    for historia in historias:
+        if "imagen" in historia:
+            imagen_path = historia["imagen"]
+            # Intentar cargar la imagen con la ruta exacta
+            if os.path.exists(imagen_path):
+                img = cv2.imread(imagen_path, cv2.IMREAD_UNCHANGED)
+                if img is not None:
+                    historia_images[historia["nombre"]] = img
+                    print(f"✓ Imagen cargada para {historia['nombre']}: {imagen_path}")
+                else:
+                    print(f"⚠ No se pudo cargar la imagen para {historia['nombre']}: {imagen_path}")
+            else:
+                # Si no existe con la ruta exacta, intentar buscar variaciones
+                base_path = os.path.dirname(imagen_path)
+                base_name = os.path.basename(imagen_path)
+                base_name_no_ext = os.path.splitext(base_name)[0]
+                ext = os.path.splitext(base_name)[1]
+                
+                # Intentar diferentes variaciones de mayúsculas/minúsculas
+                posibles_nombres = [
+                    base_name,  # Original
+                    base_name.lower(),  # Todo minúsculas
+                    base_name.upper(),  # Todo mayúsculas
+                    base_name.capitalize(),  # Primera mayúscula
+                    base_name_no_ext.lower() + ext,  # Nombre minúsculas
+                    base_name_no_ext.upper() + ext,  # Nombre mayúsculas
+                    base_name_no_ext.capitalize() + ext,  # Nombre capitalizado
+                ]
+                
+                imagen_encontrada = False
+                for nombre_variante in posibles_nombres:
+                    ruta_variante = os.path.join(base_path, nombre_variante)
+                    if os.path.exists(ruta_variante):
+                        img = cv2.imread(ruta_variante, cv2.IMREAD_UNCHANGED)
+                        if img is not None:
+                            historia_images[historia["nombre"]] = img
+                            print(f"✓ Imagen cargada para {historia['nombre']}: {ruta_variante} (variante encontrada)")
+                            imagen_encontrada = True
+                            break
+                
+                if not imagen_encontrada:
+                    print(f"⚠ No se encontró la imagen para {historia['nombre']}: {imagen_path}")
+    
+    # Título
+    titulo_texto = ""
+    font_titulo = cv2.FONT_HERSHEY_DUPLEX
+    font_scale_titulo = 1.2
+    thickness_titulo = 3
+    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
+    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    text_y_titulo = 120  # Posición del título
+    
+    # Función para dibujar el título
+    def draw_titulo_historias(screen):
+        """Dibuja el título de la pantalla de selección de historias"""
+        # Sombra del título
+        put_text_ubuntu(screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                   font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+        # Título principal
+        put_text_ubuntu(screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                   font_scale_titulo, (255, 255, 255), thickness_titulo)
+    
+    # Función para dibujar el texto de sujetos seleccionados
+    def draw_sujetos_seleccionados(screen, num_seleccionados):
+        """
+        Dibuja el texto que muestra el número de sujetos seleccionados
+        """
+        texto = f"Sujetos seleccionados: {num_seleccionados}"
+        font_scale = 1.2  # Aumentado de 0.9 a 1.2 (similar al juego de clasificación)
+        thickness = 3  # Aumentado de 2 a 3 (similar al juego de clasificación)
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+        
+        # Centrar texto horizontalmente
+        text_x = (view_width - text_width) // 2
+        text_y = 145  # Subido más (de 190 a 145)
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, (255, 255, 255), thickness, bold=True)
+    
+    # Dibujar el título en la pantalla inicial
+    draw_titulo_historias(historias_screen)
+    
+    # Dimensiones de las cards (mismas que en acciones: 6 cards en 2 filas de 3)
+    card_width = 240
+    card_height = 210
+    card_spacing = 25
+    
+    # Calcular posiciones (igual que acciones: centradas con mismo offset)
+    total_width = 3 * card_width + 2 * card_spacing
+    start_x = (view_width - total_width) // 2 - 30  # Mismo que acciones
+    start_y = 180  # Mismo que acciones
+    
+    historia_positions = {}
+    for idx, historia in enumerate(historias):
+        row = idx // 3
+        col = idx % 3
+        x = start_x + col * (card_width + card_spacing)
+        y = start_y + row * (card_height + card_spacing)
+        historia_positions[historia["nombre"]] = {
+            'x': x,
+            'y': y,
+            'width': card_width,
+            'height': card_height,
+            'color': historia["color"],
+            'imagen': historia_images.get(historia["nombre"])
+        }
+    
+    # Función para dibujar las cards de historias
+    def draw_historia_cards(screen, historia_positions, selected_cards=None):
+        if selected_cards is None:
+            selected_cards = []
+        for nombre, pos in historia_positions.items():
+            x = pos['x']
+            y = pos['y']
+            w = pos['width']
+            h = pos['height']
+            color = pos['color']
+            is_selected = (nombre in selected_cards)
+            
+            # Mantener el mismo tamaño siempre (sin expansión)
+            # Efecto visual si está seleccionada: borde verde más grueso
+            border_color = (0, 255, 0) if is_selected else (100, 100, 100)  # Verde si seleccionada
+            border_thickness = 5 if is_selected else 2
+            
+            # Dibujar sombra
+            shadow_offset = 8
+            shadow_color = (40, 40, 40)
+            for i in range(3, 0, -1):
+                shadow_alpha = i / 3.0
+                shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+                offset_layer = shadow_offset + (3 - i)
+                cv2.rectangle(screen, 
+                            (x + offset_layer, y + offset_layer), 
+                            (x + w + offset_layer, y + h + offset_layer), 
+                            shadow_color_layer, -1)
+            
+            # Dibujar la imagen como fondo completo de la card si existe
+            if pos['imagen'] is not None:
+                img = pos['imagen'].copy()
+                img_resized = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+                
+                if x >= 0 and y >= 0 and x + w <= screen.shape[1] and y + h <= screen.shape[0]:
+                    if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                        # Con transparencia
+                        alpha = img_resized[:, :, 3] / 255.0
+                        img_bgr = img_resized[:, :, :3]
+                        for c in range(3):
+                            screen[y:y+h, x:x+w, c] = (
+                                alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y:y+h, x:x+w, c]
+                            )
+                    else:
+                        # Sin transparencia
+                        screen[y:y+h, x:x+w] = img_resized[:, :, :3]
+            else:
+                # Si no hay imagen, dibujar card con color
+                cv2.rectangle(screen, (x, y), (x + w, y + h), color, -1)
+            
+            # Dibujar borde (verde si está seleccionada)
+            cv2.rectangle(screen, (x, y), (x + w, y + h), border_color, border_thickness)
+    
+    # Función para dibujar el botón "Siguiente"
+    def draw_siguiente_button(screen, elevated=False, blocked=False):
+        """
+        Dibuja un botón "Siguiente" en la parte inferior de la pantalla
+        
+        Args:
+            screen: Pantalla donde dibujar
+            elevated: Si True, el botón se dibuja elevado (efecto de levantarse)
+            blocked: Si True, el botón se dibuja bloqueado (gris, deshabilitado)
+        """
+        button_width = 200
+        button_height = 60
+        button_margin_bottom = 90  # Ajustado para bajar un poco el botón
+        button_x = (view_width - button_width) // 2  # Centrado horizontalmente
+        button_y = view_height - button_margin_bottom - button_height
+        
+        # Efecto de elevación si está elevado (solo si no está bloqueado)
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated and not blocked:
+            elevation_offset = -5
+            scale_factor = 1.05
+            shadow_offset_base = 8
+        
+        w_scaled = int(button_width * scale_factor)
+        h_scaled = int(button_height * scale_factor)
+        x_scaled = button_x - (w_scaled - button_width) // 2
+        y_scaled = button_y + elevation_offset - (h_scaled - button_height) // 2
+        
+        # Asegurar que no se salga de los límites
+        x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+        y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+        
+        # Dibujar sombra (más suave si está bloqueado)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        shadow_color = (40, 40, 40) if not blocked else (20, 20, 20)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0
+            shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+            offset_layer = shadow_offset + (3 - i)
+            cv2.rectangle(screen, 
+                        (x_scaled + offset_layer, y_scaled + offset_layer), 
+                        (x_scaled + w_scaled + offset_layer, y_scaled + h_scaled + offset_layer), 
+                        shadow_color_layer, -1)
+        
+        # Color del botón (gris si está bloqueado, verde si no)
+        if blocked:
+            button_color = (100, 100, 100)  # Gris cuando está bloqueado
+            border_color = (80, 80, 80)  # Borde gris oscuro
+            text_color = (150, 150, 150)  # Texto gris claro
+        else:
+            button_color = (100, 255, 100) if not elevated else (150, 255, 150)
+            border_color = (0, 200, 0)
+            text_color = (255, 255, 255)  # Texto blanco
+        
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), button_color, -1)
+        
+        # Borde del botón
+        border_thickness = 3
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+        
+        # Texto "Siguiente" - aumentado y centrado
+        texto = "Siguiente"
+        font_scale = 1.5 * scale_factor  # Aumentado de 0.8 a 1.5
+        thickness = 3  # Aumentado de 2 a 3 para más bold
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        bbox_top = 0
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]  # Top of bbox (usually negative for ascenders)
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+            text_height = text_size[1]
+            bbox_top = 0
+        
+        # Centrar texto en el botón
+        text_x = x_scaled + (w_scaled - text_width) // 2
+        # PIL usa y como baseline. Para centrar verticalmente, necesitamos ajustar considerando el bbox_top
+        # Mover el texto más arriba para que no sobresalga del botón
+        if bbox_top < 0:
+            # Hay ascenders, ajustar la posición moviendo más arriba
+            # Restar más para subir el texto
+            text_y = y_scaled + h_scaled // 2 + abs(bbox_top) // 2 - text_height // 2
+        else:
+            # Sin ascenders significativos, centrar normalmente pero más arriba
+            text_y = y_scaled + h_scaled // 2 - text_height // 2
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, text_color, thickness, bold=True)
+    
+    # Variables para el botón "Siguiente"
+    siguiente_button_width = 200
+    siguiente_button_height = 60
+    siguiente_button_margin_bottom = 90  # Ajustado para bajar un poco el botón
+    siguiente_button_x = (view_width - siguiente_button_width) // 2
+    siguiente_button_y = view_height - siguiente_button_margin_bottom - siguiente_button_height
+    
+    # Función para detectar si se tocó el botón "Siguiente"
+    def detectar_siguiente_button_touch(x_touch, y_touch):
+        """Detecta si el toque está dentro del área del botón Siguiente"""
+        return (siguiente_button_x <= x_touch <= siguiente_button_x + siguiente_button_width and
+                siguiente_button_y <= y_touch <= siguiente_button_y + siguiente_button_height)
+    
+    # Dibujar las cards y la X (sin selección inicial)
+    draw_titulo_historias(historias_screen)
+    draw_historia_cards(historias_screen, historia_positions, selected_cards=[])
+    draw_sujetos_seleccionados(historias_screen, 0)  # Inicialmente 0 seleccionados
+    draw_close_card_historias(historias_screen, elevated=False)
+    draw_siguiente_button(historias_screen, elevated=False, blocked=True)  # Bloqueado inicialmente
+    
+    # Configurar ventana
+    window_name = existing_window_name if existing_window_name else "Selección de Historias"
+    window_exists = False
+    try:
+        prop = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+        if prop >= 0:
+            window_exists = True
+    except:
+        window_exists = False
+    
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.waitKey(50)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.waitKey(50)
+    else:
+        try:
+            cv2.moveWindow(window_name, 1920, 0)
+            cv2.waitKey(10)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except:
+            pass
+    
+    # Mostrar en pantalla
+    historias_screen_scaled = scale_to_videobeam(historias_screen)
+    cv2.imshow(window_name, historias_screen_scaled)
+    
+    # Iniciar streams de cámara para detección de toques
+    rgb_stream = device.create_color_stream()
+    depth_stream = device.create_depth_stream()
+    rgb_stream.start()
+    depth_stream.start()
+    
+    historias_seleccionadas = []  # Lista de historias seleccionadas
+    siguiente_elevated = False
+    siguiente_pressed = False
+    siguiente_press_frames = 0
+    close_elevated = False
+    frame_count = 0
+    initialization_delay = 10
+    
+    # Sistema de debounce temporal
+    from collections import defaultdict
+    touch_history = defaultdict(list)
+    min_touch_frames = 2
+    touch_persistence_threshold = 0.8
+    min_touch_area = 100
+    max_touch_area = 50000
+    last_valid_touch_time = time.time()
+    touch_cooldown = 0.15
+    history_cleanup_interval = 30
+    max_history_age = 1.0
+    
+    # Bucle principal de detección de toques
+    while True:
+        frame_count += 1
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        
+        if frame is None or depth_frame is None:
+            continue
+        
+        rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+        bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+        bgr_data = cv2.flip(bgr_data, 1)
+        bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        
+        # Crear la máscara de toques
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        
+        # Aplicar filtros
+        touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
+        
+        if frame_count < initialization_delay:
+            # Redibujar la pantalla durante el delay
+            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            for y in range(view_height):
+                ratio = y / view_height
+                r = int(255 * (0.3 + 0.4 * ratio))
+                g = int(200 * (0.5 + 0.3 * ratio))
+                b = int(255 * (0.8 - 0.3 * ratio))
+                temp_screen[y, :] = [b, g, r]
+            draw_logo_smaller_historias(temp_screen)
+            draw_titulo_historias(temp_screen)
+            draw_historia_cards(temp_screen, historia_positions, selected_cards=historias_seleccionadas)
+            draw_sujetos_seleccionados(temp_screen, len(historias_seleccionadas))
+            draw_close_card_historias(temp_screen, elevated=False)
+            # Bloquear botón si hay menos de 1 o más de 2 selecciones
+            is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
+            draw_siguiente_button(temp_screen, elevated=False, blocked=is_blocked)
+            historias_screen_scaled = scale_to_videobeam(temp_screen)
+            cv2.imshow(window_name, historias_screen_scaled)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            continue
+        
+        # Encontrar contornos
+        contours, _ = cv2.findContours(touch_mask_filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Limpiar historial antiguo
+        current_time = time.time()
+        if frame_count % history_cleanup_interval == 0:
+            for key in list(touch_history.keys()):
+                touch_history[key] = [
+                    touch for touch in touch_history[key] 
+                    if current_time - touch[3] < max_history_age
+                ]
+                if not touch_history[key]:
+                    del touch_history[key]
+        
+        # Procesar contornos
+        valid_touches_this_frame = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if min_touch_area <= area <= max_touch_area:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    
+                    # Mapeo de coordenadas
+                    x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                    
+                    # Agregar a historial
+                    touch_key = (x_touch // 25, y_touch // 25)
+                    touch_history[touch_key].append((x_touch, y_touch, area, current_time))
+                    
+                    # Verificar persistencia
+                    if len(touch_history[touch_key]) >= min_touch_frames:
+                        if current_time - last_valid_touch_time > touch_cooldown:
+                            recent_touches = touch_history[touch_key][-min_touch_frames:]
+                            all_recent = all(current_time - touch[3] < 1.0 for touch in recent_touches)
+                            
+                            if all_recent and len(recent_touches) >= min_touch_frames:
+                                areas = [touch[2] for touch in recent_touches]
+                                avg_area = sum(areas) / len(areas)
+                                
+                                if min(areas) > 0:
+                                    area_variance = max(areas) / min(areas)
+                                    if area_variance < 3.5 and min_touch_area <= avg_area <= max_touch_area:
+                                        valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+        
+        # Procesar toques válidos
+        for x_touch, y_touch, touch_key in valid_touches_this_frame:
+            if touch_key in touch_history:
+                del touch_history[touch_key]
+            last_valid_touch_time = current_time
+            
+            # Verificar si se tocó la X
+            if detectar_close_card_touch_historias(x_touch, y_touch):
+                print("Card de cerrar tocada en selección de historias")
+                # Mostrar efecto de elevación en la X
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_smaller_historias(temp_screen)
+                draw_titulo_historias(temp_screen)
+                draw_historia_cards(temp_screen, historia_positions, selected_cards=historias_seleccionadas)
+                draw_sujetos_seleccionados(temp_screen, len(historias_seleccionadas))
+                draw_close_card_historias(temp_screen, elevated=True)
+                # Bloquear botón si hay menos de 1 o más de 2 selecciones
+                is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
+                draw_siguiente_button(temp_screen, elevated=False, blocked=is_blocked)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver al menú principal (retornar None)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return None
+            
+            # Verificar si se está tocando el botón "Siguiente"
+            if detectar_siguiente_button_touch(x_touch, y_touch):
+                if 1 <= len(historias_seleccionadas) <= 2:  # Requiere mínimo 1 y máximo 2 sujetos
+                    if not siguiente_pressed:
+                        # Iniciar el efecto de elevación
+                        siguiente_pressed = True
+                        siguiente_press_frames = 0
+                        siguiente_elevated = True
+                        print("Botón Siguiente presionado")
+                else:
+                    siguiente_elevated = False
+                    siguiente_pressed = False
+                    siguiente_press_frames = 0
+                    print("Botón Siguiente bloqueado - selecciona entre 1 y 2 sujetos")
+            else:
+                # Si no se está tocando el botón, resetear estado de elevación pero mantener pressed si está procesándose
+                if siguiente_press_frames == 0:  # Solo resetear si no está en proceso de ser procesado
+                    siguiente_elevated = False
+                # No resetear siguiente_pressed aquí, se resetea después de procesar
+                
+                # Verificar si se seleccionó una historia
+                historia_seleccionada_temp = None
+                for nombre, pos in historia_positions.items():
+                    x, y = pos['x'], pos['y']
+                    w, h = pos['width'], pos['height']
+                    if x <= x_touch <= x + w and y <= y_touch <= y + h:
+                        historia_seleccionada_temp = nombre
+                        break
+                
+                if historia_seleccionada_temp:
+                    # Toggle de selección: si ya está seleccionada, deseleccionarla; si no, seleccionarla
+                    if historia_seleccionada_temp in historias_seleccionadas:
+                        historias_seleccionadas.remove(historia_seleccionada_temp)
+                        print(f"Historia deseleccionada: {historia_seleccionada_temp}")
+                    else:
+                        # Limitar a máximo 2 sujetos
+                        if len(historias_seleccionadas) < 2:
+                            historias_seleccionadas.append(historia_seleccionada_temp)
+                            print(f"Historia seleccionada: {historia_seleccionada_temp}")
+                            _historia_tts_speak(historia_seleccionada_temp, tipo="sujeto")
+                        else:
+                            print(f"Ya has seleccionado el máximo de 2 sujetos")
+                    print(f"Historias seleccionadas: {historias_seleccionadas}")
+                    # Continuar en el bucle para mostrar la selección actualizada
+        
+        # Procesar el botón "Siguiente" si está presionado
+        if siguiente_pressed and 1 <= len(historias_seleccionadas) <= 2:  # Asegurar que hay entre 1 y 2 sujetos seleccionados
+            siguiente_press_frames += 1
+            if siguiente_press_frames >= 10:  # Después de 10 frames, procesar la acción
+                print("Botón Siguiente procesado - pasando a selección de acciones")
+                # Resetear el estado del botón antes de cambiar de vista
+                siguiente_pressed = False
+                siguiente_press_frames = 0
+                siguiente_elevated = False
+                # Detener streams de historias antes de ir a acciones
+                rgb_stream.stop()
+                depth_stream.stop()
+                
+                # Llamar a la vista de selección de acciones
+                acciones_seleccionadas = mostrar_seleccion_acciones(
+                    device, coordenadas, dmax_map, dmin_map, draw_logo_func,
+                    existing_window_name=window_name
+                )
+                
+                # Si se canceló o se presionó la X (retornó None o "MENU")
+                if acciones_seleccionadas is None:
+                    # Reiniciar streams para volver a la vista de historias
+                    rgb_stream = device.create_color_stream()
+                    depth_stream = device.create_depth_stream()
+                    rgb_stream.start()
+                    depth_stream.start()
+                    # Reiniciar el contador de frames
+                    frame_count = 0
+                    siguiente_elevated = False
+                    siguiente_pressed = False
+                    siguiente_press_frames = 0
+                    # Continuar en el bucle de selección de historias
+                    continue
+                elif acciones_seleccionadas == "MENU":
+                    # Si se presionó la X en acciones, volver al menú principal
+                    rgb_stream.stop()
+                    depth_stream.stop()
+                    return None
+                elif acciones_seleccionadas == "BACK":
+                    # Si se presionó la flecha de retroceso, volver a la vista de historias manteniendo las selecciones
+                    rgb_stream = device.create_color_stream()
+                    depth_stream = device.create_depth_stream()
+                    rgb_stream.start()
+                    depth_stream.start()
+                    # Reiniciar el contador de frames
+                    frame_count = 0
+                    siguiente_elevated = False
+                    siguiente_pressed = False
+                    siguiente_press_frames = 0
+                    # Continuar en el bucle de selección de historias (las selecciones se mantienen)
+                    continue
+                else:
+                    # Si acciones_seleccionadas es un diccionario, significa que ya pasó por lugares
+                    if isinstance(acciones_seleccionadas, dict):
+                        # Llamar a la vista final con todas las selecciones
+                        resultado_final = mostrar_vista_final(
+                            device, coordenadas, dmax_map, dmin_map, draw_logo_func,
+                            historias_seleccionadas,
+                            acciones_seleccionadas.get('acciones', []),
+                            acciones_seleccionadas.get('lugares', []),
+                            existing_window_name=window_name
+                        )
+                        
+                        # Si se canceló desde la vista final, retornar "MENU" o None
+                        if resultado_final is None or resultado_final == "MENU":
+                            return resultado_final
+                        elif resultado_final == "RESTART_FULL":
+                            # Volver a la primera selección del juego (limpiar todas las selecciones)
+                            historias_seleccionadas = []
+                            acciones_seleccionadas = []  # Reset to empty list (will be a list, not a dict)
+                            # Reiniciar streams para volver a la vista de historias
+                            try:
+                                rgb_stream.stop()
+                                depth_stream.stop()
+                            except:
+                                pass
+                            rgb_stream = device.create_color_stream()
+                            depth_stream = device.create_depth_stream()
+                            rgb_stream.start()
+                            depth_stream.start()
+                            # Reiniciar el contador de frames
+                            frame_count = 0
+                            siguiente_elevated = False
+                            siguiente_pressed = False
+                            siguiente_press_frames = 0
+                            continue  # Continuar en el bucle para empezar de nuevo
+                        else:
+                            # Retornar todas las selecciones
+                            return {
+                                'sujetos': historias_seleccionadas,
+                                'acciones': acciones_seleccionadas.get('acciones', []),
+                                'lugares': acciones_seleccionadas.get('lugares', [])
+                            }
+                    else:
+                        # Si es una lista, solo retornar las historias y acciones (caso antiguo)
+                        return {
+                            'sujetos': historias_seleccionadas,
+                            'acciones': acciones_seleccionadas
+                        }
+        
+        # Redibujar la pantalla en cada frame
+        temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            temp_screen[y, :] = [b, g, r]
+        draw_logo_smaller_historias(temp_screen)
+        draw_titulo_historias(temp_screen)
+        draw_historia_cards(temp_screen, historia_positions, selected_cards=historias_seleccionadas)
+        draw_sujetos_seleccionados(temp_screen, len(historias_seleccionadas))
+        draw_close_card_historias(temp_screen, elevated=close_elevated)
+        # Bloquear botón si hay menos de 1 o más de 2 sujetos seleccionados
+        is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
+        draw_siguiente_button(temp_screen, elevated=siguiente_elevated, blocked=is_blocked)
+        historias_screen_scaled = scale_to_videobeam(temp_screen)
+        cv2.imshow(window_name, historias_screen_scaled)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+    
+    # Detener streams y cerrar
+    rgb_stream.stop()
+    depth_stream.stop()
+    return historias_seleccionadas if historias_seleccionadas else None  # Retornar las historias seleccionadas (o None si no hay ninguna)
+
+def mostrar_seleccion_acciones(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
+    """
+    Muestra la vista de selección de acciones con 6 cards.
+    
+    Args:
+        device: Dispositivo OpenNI2
+        coordenadas: Diccionario con las coordenadas de calibración
+        dmax_map: Mapa de profundidad máximo
+        dmin_map: Mapa de profundidad mínimo
+        draw_logo_func: Función para dibujar el logo en la pantalla
+        existing_window_name: Nombre de ventana existente para reutilizar (opcional)
+    
+    Returns:
+        list o None: Lista de acciones seleccionadas o None si se canceló
+    """
+    # Extraer coordenadas
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+    
+    # Tamaño de la pantalla del videobeam (viewport)
+    view_width = 1280
+    view_height = 800
+    
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """Escala una imagen de la resolución fuente a la resolución del videobeam."""
+        if image is None or image.size == 0:
+            return image
+        scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+        return scaled_image
+    
+    # Crear fondo
+    acciones_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de colores (mismo estilo que el menú)
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        acciones_screen[y, :] = [b, g, r]
+    
+    # Dibujar el logo (un poco más pequeño - 95% del tamaño original)
+    def draw_logo_smaller_acciones(screen):
+        logo_loaded_local = False
+        logo_image_local = None
+        
+        try:
+            if os.path.exists("images/logo.png"):
+                logo_image_local = cv2.imread("images/logo.png", cv2.IMREAD_UNCHANGED)
+                if logo_image_local is not None:
+                    logo_loaded_local = True
+            elif os.path.exists("images/logo.svg"):
+                try:
+                    logo_surface = pygame.image.load("images/logo.svg")
+                    logo_string = pygame.image.tostring(logo_surface, "RGBA")
+                    logo_np = np.frombuffer(logo_string, np.uint8)
+                    logo_image_local = logo_np.reshape((logo_surface.get_height(), logo_surface.get_width(), 4))
+                    logo_image_local = cv2.cvtColor(logo_image_local, cv2.COLOR_RGBA2BGRA)
+                    logo_loaded_local = True
+                except Exception:
+                    logo_loaded_local = False
+        except Exception:
+            logo_loaded_local = False
+        
+        if logo_loaded_local and logo_image_local is not None:
+            logo_height = 114  # 95% de 120 (casi imperceptible)
+            if len(logo_image_local.shape) == 3:
+                original_height, original_width = logo_image_local.shape[:2]
+            else:
+                original_height, original_width = logo_image_local.shape[0], logo_image_local.shape[1]
+            
+            aspect_ratio = original_width / original_height
+            logo_width = int(logo_height * aspect_ratio)
+            logo_resized = cv2.resize(logo_image_local, (logo_width, logo_height), interpolation=cv2.INTER_AREA)
+            logo_x = (view_width - logo_width) // 2
+            logo_y = 20  # Subido un poco más (de 30 a 20)
+            
+            if logo_x >= 0 and logo_y >= 0 and logo_x + logo_width <= view_width and logo_y + logo_height <= view_height:
+                if len(logo_resized.shape) == 3 and logo_resized.shape[2] == 4:
+                    alpha = logo_resized[:, :, 3] / 255.0
+                    for c in range(3):
+                        screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c] = (
+                            alpha * logo_resized[:, :, c] + (1 - alpha) * screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c]
+                        )
+                elif len(logo_resized.shape) == 3:
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_resized[:, :, :3]
+                else:
+                    logo_bgr = cv2.cvtColor(logo_resized, cv2.COLOR_GRAY2BGR)
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_bgr
+        else:
+            draw_logo_func(screen)
+    
+    draw_logo_smaller_acciones(acciones_screen)
+    
+    # Función para dibujar card redonda con flecha hacia la izquierda (estilo infantil) - en la parte superior izquierda
+    def draw_back_card_acciones(screen, elevated=False):
+        """
+        Dibuja una card redonda con flecha hacia la izquierda en el centro, estilo infantil, azul con flecha blanca
+        en la parte superior izquierda
+        """
+        # Posición base del lado izquierdo (parte superior)
+        base_card_radius = 50
+        card_margin_x = 120  # Movido más a la izquierda
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (card_margin_x + int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (0, 100, 100))  # Azul para la sombra
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente azul pastel (simulado con círculos concéntricos)
+        color_intensity = 1.15 if elevated else 1.0
+        base_blue_light = int(100 * color_intensity)
+        base_blue_medium = int(50 * color_intensity)
+        base_blue_dark = int(30 * color_intensity)
+        base_blue_light = min(255, base_blue_light)
+        base_blue_medium = min(255, base_blue_medium)
+        base_blue_dark = min(255, base_blue_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (255, base_blue_light, base_blue_light), -1)
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (255, base_blue_medium, base_blue_medium), -1)
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (255, base_blue_dark, base_blue_dark), -1)
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la flecha hacia la izquierda blanca en el centro
+        arrow_size = int(card_radius * 0.4)
+        thickness = 5
+        
+        # Punto de inicio de la flecha (punta)
+        arrow_tip_x = card_center[0] - arrow_size
+        arrow_tip_y = card_center[1]
+        
+        # Punto final de la flecha (cola)
+        arrow_tail_x = card_center[0] + arrow_size
+        arrow_tail_y = card_center[1]
+        
+        # Puntos para las dos líneas de la flecha (formando un triángulo)
+        arrow_top_x = arrow_tail_x - arrow_size * 0.3
+        arrow_top_y = arrow_tail_y - arrow_size * 0.5
+        arrow_bottom_x = arrow_tail_x - arrow_size * 0.3
+        arrow_bottom_y = arrow_tail_y + arrow_size * 0.5
+        
+        # Sombra de la flecha
+        shadow_offset_arrow = 2
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (arrow_tail_x + shadow_offset_arrow, arrow_tail_y + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (int(arrow_top_x) + shadow_offset_arrow, int(arrow_top_y) + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (int(arrow_bottom_x) + shadow_offset_arrow, int(arrow_bottom_y) + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        
+        # Flecha blanca principal
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (arrow_tail_x, arrow_tail_y), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (int(arrow_top_x), int(arrow_top_y)), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (int(arrow_bottom_x), int(arrow_bottom_y)), 
+                (255, 255, 255), thickness)
+    
+    # Función para dibujar card redonda con X (estilo infantil) - en la parte superior derecha
+    def draw_close_card_acciones(screen, elevated=False):
+        """
+        Dibuja una card redonda con X en el centro, estilo infantil, roja con X blanca
+        en la parte superior derecha
+        """
+        # Posición base del lado derecho (parte superior)
+        base_card_radius = 50
+        card_margin_x = 180
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (view_width - card_margin_x - int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (100, 0, 0))
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente rojo pastel (simulado con círculos concéntricos)
+        color_intensity = 1.15 if elevated else 1.0
+        base_red_light = int(100 * color_intensity)
+        base_red_medium = int(50 * color_intensity)
+        base_red_dark = int(30 * color_intensity)
+        base_red_light = min(255, base_red_light)
+        base_red_medium = min(255, base_red_medium)
+        base_red_dark = min(255, base_red_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (base_red_light, base_red_light, 255), -1)
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (base_red_medium, base_red_medium, 255), -1)
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (base_red_dark, base_red_dark, 255), -1)
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la X blanca en el centro
+        x_size = int(card_radius * 0.5)
+        thickness = 5
+        # Sombra de la X
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] - x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] + x_size + 2), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] + x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] - x_size + 2), 
+                (150, 150, 150), thickness)
+        # X blanca principal
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] - x_size), 
+                (card_center[0] + x_size, card_center[1] + x_size), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] + x_size), 
+                (card_center[0] + x_size, card_center[1] - x_size), 
+                (255, 255, 255), thickness)
+    
+    # Variables para la card de retroceso (necesarias para la detección)
+    back_card_radius_acciones = 50
+    back_card_margin_x_acciones = 120  # Movido más a la izquierda
+    back_card_margin_y_acciones = 80
+    back_card_center_x_acciones = back_card_margin_x_acciones + back_card_radius_acciones
+    back_card_center_y_acciones = back_card_margin_y_acciones + back_card_radius_acciones
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    back_card_detection_size_acciones = back_card_radius_acciones * 2.4
+    back_card_detection_x_acciones = back_card_center_x_acciones - back_card_radius_acciones * 1.2
+    back_card_detection_y_acciones = back_card_center_y_acciones - back_card_radius_acciones * 1.2
+    back_card_detection_w_acciones = back_card_detection_size_acciones
+    back_card_detection_h_acciones = back_card_detection_size_acciones
+    
+    # Función para detectar si se tocó la card de retroceso
+    def detectar_back_card_touch_acciones(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de retroceso"""
+        return (back_card_detection_x_acciones <= x_touch <= back_card_detection_x_acciones + back_card_detection_w_acciones and
+                back_card_detection_y_acciones <= y_touch <= back_card_detection_y_acciones + back_card_detection_h_acciones)
+    
+    # Variables para la card de cerrar (necesarias para la detección)
+    close_card_radius_acciones = 50
+    close_card_margin_x_acciones = 180
+    close_card_margin_y_acciones = 80
+    close_card_center_x_acciones = view_width - close_card_margin_x_acciones - close_card_radius_acciones
+    close_card_center_y_acciones = close_card_margin_y_acciones + close_card_radius_acciones
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    close_card_detection_size_acciones = close_card_radius_acciones * 2.4
+    close_card_detection_x_acciones = close_card_center_x_acciones - close_card_radius_acciones * 1.2
+    close_card_detection_y_acciones = close_card_center_y_acciones - close_card_radius_acciones * 1.2
+    close_card_detection_w_acciones = close_card_detection_size_acciones
+    close_card_detection_h_acciones = close_card_detection_size_acciones
+    
+    # Función para detectar si se tocó la card de cerrar
+    def detectar_close_card_touch_acciones(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de cerrar"""
+        return (close_card_detection_x_acciones <= x_touch <= close_card_detection_x_acciones + close_card_detection_w_acciones and
+                close_card_detection_y_acciones <= y_touch <= close_card_detection_y_acciones + close_card_detection_h_acciones)
+    
+    # Definir las 6 acciones
+    acciones = [
+        {"nombre": "Dar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Dar.png"},
+        {"nombre": "Ayudar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
+        {"nombre": "Correr", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
+        {"nombre": "Jugar", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Jugar.png"},
+        {"nombre": "Llamar", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Llamar.png"},
+        {"nombre": "Trabajar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"}
+    ]
+    
+    # Cargar imágenes de las acciones si existen
+    accion_images = {}
+    for accion in acciones:
+        if "imagen" in accion and os.path.exists(accion["imagen"]):
+            img = cv2.imread(accion["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                accion_images[accion["nombre"]] = img
+                print(f"✓ Imagen cargada para {accion['nombre']}: {accion['imagen']}")
+            else:
+                print(f"⚠ No se pudo cargar la imagen para {accion['nombre']}: {accion['imagen']}")
+    
+    # Título
+    titulo_texto = "Selecciona una accion"
+    font_titulo = cv2.FONT_HERSHEY_DUPLEX
+    font_scale_titulo = 1.2
+    thickness_titulo = 3
+    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
+    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    text_y_titulo = 150  # Mover título más arriba
+    # Sombra del título
+    put_text_ubuntu(acciones_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+               font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+    # Título principal
+    put_text_ubuntu(acciones_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+               font_scale_titulo, (255, 255, 255), thickness_titulo)
+    
+    # Función para dibujar el texto de acciones seleccionadas
+    def draw_acciones_seleccionadas(screen, num_seleccionados):
+        """
+        Dibuja el texto que muestra el número de acciones seleccionadas
+        """
+        texto = f"Acciones seleccionadas: {num_seleccionados}"
+        font_scale = 1.2  # Aumentado de 0.9 a 1.2 (similar al juego de clasificación)
+        thickness = 3  # Aumentado de 2 a 3 (similar al juego de clasificación)
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+        
+        # Centrar texto horizontalmente
+        text_x = (view_width - text_width) // 2
+        text_y = 145  # Subido más (de 190 a 145)
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, (255, 255, 255), thickness, bold=True)
+    
+    # Dimensiones de las cards (más pequeñas para 6 cards en 2 filas de 3)
+    card_width = 240  # Reducido de 280 a 240
+    card_height = 210  # Reducido de 250 a 210
+    card_spacing = 25  # Reducido de 30 a 25
+    
+    # Calcular posiciones (centradas, 3 cards por fila, 2 filas)
+    total_width = 3 * card_width + 2 * card_spacing
+    start_x = (view_width - total_width) // 2 - 30  # Movido un poco a la izquierda
+    start_y = 180  # Subido un poco más (de 200 a 180)
+    
+    accion_positions = {}
+    for idx, accion in enumerate(acciones):
+        row = idx // 3
+        col = idx % 3
+        x = start_x + col * (card_width + card_spacing)
+        y = start_y + row * (card_height + card_spacing)
+        accion_positions[accion["nombre"]] = {
+            'x': x,
+            'y': y,
+            'width': card_width,
+            'height': card_height,
+            'color': accion["color"],
+            'imagen': accion_images.get(accion["nombre"])
+        }
+    
+    # Función para dibujar las cards de acciones
+    def draw_accion_cards(screen, accion_positions, selected_cards=None):
+        if selected_cards is None:
+            selected_cards = []
+        for nombre, pos in accion_positions.items():
+            x = pos['x']
+            y = pos['y']
+            w = pos['width']
+            h = pos['height']
+            color = pos['color']
+            is_selected = (nombre in selected_cards)
+            
+            # Efecto visual si está seleccionada: hacer la card más ancha (como en escenarios)
+            width_scale = 1.15 if is_selected else 1.0  # 15% más ancha cuando está seleccionada
+            w_scaled = int(w * width_scale)
+            # Centrar la card expandida
+            x_scaled = x - (w_scaled - w) // 2
+            
+            # Asegurar que no se salga de los límites
+            x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+            
+            # Efecto visual si está seleccionada: borde verde
+            border_color = (0, 255, 0) if is_selected else (100, 100, 100)  # Verde si seleccionada
+            border_thickness = 5 if is_selected else 2
+            
+            # Dibujar sombra
+            shadow_offset = 8
+            shadow_color = (40, 40, 40)
+            for i in range(3, 0, -1):
+                shadow_alpha = i / 3.0
+                shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+                offset_layer = shadow_offset + (3 - i)
+                cv2.rectangle(screen, 
+                            (x_scaled + offset_layer, y + offset_layer), 
+                            (x_scaled + w_scaled + offset_layer, y + h + offset_layer), 
+                            shadow_color_layer, -1)
+            
+            # Dibujar la imagen como fondo completo de la card si existe
+            if pos['imagen'] is not None:
+                img = pos['imagen'].copy()
+                img_resized = cv2.resize(img, (w_scaled, h), interpolation=cv2.INTER_AREA)
+                
+                if x_scaled >= 0 and y >= 0 and x_scaled + w_scaled <= screen.shape[1] and y + h <= screen.shape[0]:
+                    if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                        # Con transparencia
+                        alpha = img_resized[:, :, 3] / 255.0
+                        img_bgr = img_resized[:, :, :3]
+                        for c in range(3):
+                            screen[y:y+h, x_scaled:x_scaled+w_scaled, c] = (
+                                alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y:y+h, x_scaled:x_scaled+w_scaled, c]
+                            )
+                    else:
+                        # Sin transparencia
+                        screen[y:y+h, x_scaled:x_scaled+w_scaled] = img_resized[:, :, :3]
+            else:
+                # Si no hay imagen, dibujar card con color
+                cv2.rectangle(screen, (x_scaled, y), (x_scaled + w_scaled, y + h), color, -1)
+            
+            # Dibujar borde (verde si está seleccionada)
+            cv2.rectangle(screen, (x_scaled, y), (x_scaled + w_scaled, y + h), border_color, border_thickness)
+    
+    # Función para dibujar el botón "Siguiente"
+    def draw_siguiente_button_acciones(screen, elevated=False, blocked=False):
+        """
+        Dibuja un botón "Siguiente" en la parte inferior de la pantalla
+        """
+        button_width = 200
+        button_height = 60
+        button_margin_bottom = 90  # Ajustado para bajar un poco el botón
+        button_x = (view_width - button_width) // 2  # Centrado horizontalmente
+        button_y = view_height - button_margin_bottom - button_height
+        
+        # Efecto de elevación si está elevado (solo si no está bloqueado)
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated and not blocked:
+            elevation_offset = -5
+            scale_factor = 1.05
+            shadow_offset_base = 8
+        
+        w_scaled = int(button_width * scale_factor)
+        h_scaled = int(button_height * scale_factor)
+        x_scaled = button_x - (w_scaled - button_width) // 2
+        y_scaled = button_y + elevation_offset - (h_scaled - button_height) // 2
+        
+        # Asegurar que no se salga de los límites
+        x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+        y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+        
+        # Dibujar sombra (más suave si está bloqueado)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        shadow_color = (40, 40, 40) if not blocked else (20, 20, 20)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0
+            shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+            offset_layer = shadow_offset + (3 - i)
+            cv2.rectangle(screen, 
+                        (x_scaled + offset_layer, y_scaled + offset_layer), 
+                        (x_scaled + w_scaled + offset_layer, y_scaled + h_scaled + offset_layer), 
+                        shadow_color_layer, -1)
+        
+        # Color del botón (gris si está bloqueado, verde si no)
+        if blocked:
+            button_color = (100, 100, 100)  # Gris cuando está bloqueado
+            border_color = (80, 80, 80)  # Borde gris oscuro
+            text_color = (150, 150, 150)  # Texto gris claro
+        else:
+            button_color = (100, 255, 100) if not elevated else (150, 255, 150)
+            border_color = (0, 200, 0)
+            text_color = (255, 255, 255)  # Texto blanco
+        
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), button_color, -1)
+        
+        # Borde del botón
+        border_thickness = 3
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+        
+        # Texto "Siguiente" - aumentado y centrado
+        texto = "Siguiente"
+        font_scale = 1.5 * scale_factor  # Aumentado de 0.8 a 1.5
+        thickness = 3  # Aumentado de 2 a 3 para más bold
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        bbox_top = 0
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]  # Top of bbox (usually negative for ascenders)
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+            text_height = text_size[1]
+            bbox_top = 0
+        
+        # Centrar texto en el botón
+        text_x = x_scaled + (w_scaled - text_width) // 2
+        # PIL usa y como baseline. Para centrar verticalmente, necesitamos ajustar considerando el bbox_top
+        # Mover el texto más arriba para que no sobresalga del botón
+        if bbox_top < 0:
+            # Hay ascenders, ajustar la posición moviendo más arriba
+            # Restar más para subir el texto
+            text_y = y_scaled + h_scaled // 2 + abs(bbox_top) // 2 - text_height // 2
+        else:
+            # Sin ascenders significativos, centrar normalmente pero más arriba
+            text_y = y_scaled + h_scaled // 2 - text_height // 2
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, text_color, thickness, bold=True)
+    
+    # Variables para el botón "Siguiente"
+    siguiente_button_width_acciones = 200
+    siguiente_button_height_acciones = 60
+    siguiente_button_margin_bottom_acciones = 90  # Ajustado para bajar un poco el botón
+    siguiente_button_x_acciones = (view_width - siguiente_button_width_acciones) // 2
+    siguiente_button_y_acciones = view_height - siguiente_button_margin_bottom_acciones - siguiente_button_height_acciones
+    
+    # Función para detectar si se tocó el botón "Siguiente"
+    def detectar_siguiente_button_touch_acciones(x_touch, y_touch):
+        """Detecta si el toque está dentro del área del botón Siguiente"""
+        return (siguiente_button_x_acciones <= x_touch <= siguiente_button_x_acciones + siguiente_button_width_acciones and
+                siguiente_button_y_acciones <= y_touch <= siguiente_button_y_acciones + siguiente_button_height_acciones)
+    
+    # Dibujar las cards y la X (sin selección inicial)
+    draw_accion_cards(acciones_screen, accion_positions, selected_cards=[])
+    draw_acciones_seleccionadas(acciones_screen, 0)  # Inicialmente 0 seleccionados
+    draw_close_card_acciones(acciones_screen, elevated=False)
+    draw_siguiente_button_acciones(acciones_screen, elevated=False, blocked=True)  # Bloqueado inicialmente
+    
+    # Configurar ventana
+    window_name = existing_window_name if existing_window_name else "Selección de Acciones"
+    window_exists = False
+    try:
+        prop = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+        if prop >= 0:
+            window_exists = True
+    except:
+        window_exists = False
+    
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.waitKey(50)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.waitKey(50)
+    else:
+        try:
+            cv2.moveWindow(window_name, 1920, 0)
+            cv2.waitKey(10)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except:
+            pass
+    
+    # Mostrar en pantalla
+    acciones_screen_scaled = scale_to_videobeam(acciones_screen)
+    cv2.imshow(window_name, acciones_screen_scaled)
+    
+    # Iniciar streams de cámara para detección de toques
+    rgb_stream = device.create_color_stream()
+    depth_stream = device.create_depth_stream()
+    rgb_stream.start()
+    depth_stream.start()
+    
+    acciones_seleccionadas = []  # Lista de acciones seleccionadas
+    siguiente_elevated_acciones = False
+    siguiente_pressed_acciones = False
+    siguiente_press_frames_acciones = 0
+    back_elevated_acciones = False
+    close_elevated_acciones = False
+    frame_count = 0
+    initialization_delay = 10
+    
+    # Sistema de debounce temporal
+    from collections import defaultdict
+    touch_history = defaultdict(list)
+    min_touch_frames = 2
+    touch_persistence_threshold = 0.8
+    min_touch_area = 100
+    max_touch_area = 50000
+    last_valid_touch_time = time.time()
+    touch_cooldown = 0.15
+    history_cleanup_interval = 30
+    max_history_age = 1.0
+    
+    # Bucle principal de detección de toques
+    while True:
+        frame_count += 1
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        
+        if frame is None or depth_frame is None:
+            continue
+        
+        rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+        bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+        bgr_data = cv2.flip(bgr_data, 1)
+        bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        
+        # Crear la máscara de toques
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        
+        # Aplicar filtros
+        touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
+        
+        if frame_count < initialization_delay:
+            # Redibujar la pantalla durante el delay
+            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            for y in range(view_height):
+                ratio = y / view_height
+                r = int(255 * (0.3 + 0.4 * ratio))
+                g = int(200 * (0.5 + 0.3 * ratio))
+                b = int(255 * (0.8 - 0.3 * ratio))
+                temp_screen[y, :] = [b, g, r]
+            draw_logo_smaller_acciones(temp_screen)
+            draw_accion_cards(temp_screen, accion_positions, selected_cards=acciones_seleccionadas)
+            draw_acciones_seleccionadas(temp_screen, len(acciones_seleccionadas))
+            draw_back_card_acciones(temp_screen, elevated=False)
+            draw_close_card_acciones(temp_screen, elevated=False)
+            is_blocked = len(acciones_seleccionadas) != 1
+            draw_siguiente_button_acciones(temp_screen, elevated=False, blocked=is_blocked)
+            acciones_screen_scaled = scale_to_videobeam(temp_screen)
+            cv2.imshow(window_name, acciones_screen_scaled)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            continue
+        
+        # Encontrar contornos
+        contours, _ = cv2.findContours(touch_mask_filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Limpiar historial antiguo
+        current_time = time.time()
+        if frame_count % history_cleanup_interval == 0:
+            for key in list(touch_history.keys()):
+                touch_history[key] = [
+                    touch for touch in touch_history[key] 
+                    if current_time - touch[3] < max_history_age
+                ]
+                if not touch_history[key]:
+                    del touch_history[key]
+        
+        # Procesar contornos
+        valid_touches_this_frame = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if min_touch_area <= area <= max_touch_area:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    
+                    # Mapeo de coordenadas
+                    x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                    
+                    # Agregar a historial
+                    touch_key = (x_touch // 25, y_touch // 25)
+                    touch_history[touch_key].append((x_touch, y_touch, area, current_time))
+                    
+                    # Verificar persistencia
+                    if len(touch_history[touch_key]) >= min_touch_frames:
+                        if current_time - last_valid_touch_time > touch_cooldown:
+                            recent_touches = touch_history[touch_key][-min_touch_frames:]
+                            all_recent = all(current_time - touch[3] < 1.0 for touch in recent_touches)
+                            
+                            if all_recent and len(recent_touches) >= min_touch_frames:
+                                areas = [touch[2] for touch in recent_touches]
+                                avg_area = sum(areas) / len(areas)
+                                
+                                if min(areas) > 0:
+                                    area_variance = max(areas) / min(areas)
+                                    if area_variance < 3.5 and min_touch_area <= avg_area <= max_touch_area:
+                                        valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+        
+        # Procesar toques válidos
+        for x_touch, y_touch, touch_key in valid_touches_this_frame:
+            if touch_key in touch_history:
+                del touch_history[touch_key]
+            last_valid_touch_time = current_time
+            
+            # Verificar si se tocó el botón de retroceso (flecha)
+            if detectar_back_card_touch_acciones(x_touch, y_touch):
+                print("Card de retroceso tocada en selección de acciones")
+                # Mostrar efecto de elevación en la flecha
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_func(temp_screen)
+                draw_accion_cards(temp_screen, accion_positions, selected_cards=acciones_seleccionadas)
+                draw_acciones_seleccionadas(temp_screen, len(acciones_seleccionadas))
+                draw_back_card_acciones(temp_screen, elevated=True)
+                draw_close_card_acciones(temp_screen, elevated=False)
+                is_blocked = len(acciones_seleccionadas) != 1
+                draw_siguiente_button_acciones(temp_screen, elevated=False, blocked=is_blocked)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver a la vista anterior (retornar "BACK" para indicar retroceso)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return "BACK"
+            
+            # Verificar si se tocó la X
+            if detectar_close_card_touch_acciones(x_touch, y_touch):
+                print("Card de cerrar tocada en selección de acciones")
+                # Mostrar efecto de elevación en la X
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_func(temp_screen)
+                draw_accion_cards(temp_screen, accion_positions, selected_cards=acciones_seleccionadas)
+                draw_acciones_seleccionadas(temp_screen, len(acciones_seleccionadas))
+                draw_back_card_acciones(temp_screen, elevated=False)
+                draw_close_card_acciones(temp_screen, elevated=True)
+                is_blocked = len(acciones_seleccionadas) != 1
+                draw_siguiente_button_acciones(temp_screen, elevated=False, blocked=is_blocked)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver al menú principal (retornar "MENU" para indicar que se debe volver al menú)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return "MENU"
+            
+            # Verificar si se está tocando el botón "Siguiente"
+            if detectar_siguiente_button_touch_acciones(x_touch, y_touch):
+                if len(acciones_seleccionadas) == 1:  # Requiere exactamente 1 acción
+                    if not siguiente_pressed_acciones:
+                        # Iniciar el efecto de elevación
+                        siguiente_pressed_acciones = True
+                        siguiente_press_frames_acciones = 0
+                        siguiente_elevated_acciones = True
+                        print("Botón Siguiente presionado en selección de acciones")
+                else:
+                    siguiente_elevated_acciones = False
+                    siguiente_pressed_acciones = False
+                    siguiente_press_frames_acciones = 0
+                    print("Botón Siguiente bloqueado - selecciona al menos una acción")
+            else:
+                # Si no se está tocando el botón, resetear estado
+                if siguiente_pressed_acciones:
+                    siguiente_pressed_acciones = False
+                    siguiente_press_frames_acciones = 0
+                siguiente_elevated_acciones = False
+                
+                # Verificar si se seleccionó una acción
+                accion_seleccionada_temp = None
+                for nombre, pos in accion_positions.items():
+                    x, y = pos['x'], pos['y']
+                    w, h = pos['width'], pos['height']
+                    if x <= x_touch <= x + w and y <= y_touch <= y + h:
+                        accion_seleccionada_temp = nombre
+                        break
+                
+                if accion_seleccionada_temp:
+                    # Toggle de selección: si ya está seleccionada, deseleccionarla; si no, seleccionarla
+                    if accion_seleccionada_temp in acciones_seleccionadas:
+                        acciones_seleccionadas.remove(accion_seleccionada_temp)
+                        print(f"Acción deseleccionada: {accion_seleccionada_temp}")
+                    else:
+                        # Limitar a máximo 1 acción
+                        if len(acciones_seleccionadas) < 1:
+                            acciones_seleccionadas.append(accion_seleccionada_temp)
+                            print(f"Acción seleccionada: {accion_seleccionada_temp}")
+                            _historia_tts_speak(accion_seleccionada_temp, tipo="accion")
+                        else:
+                            # Si ya hay una acción seleccionada, reemplazarla
+                            acciones_seleccionadas.clear()
+                            acciones_seleccionadas.append(accion_seleccionada_temp)
+                            print(f"Acción seleccionada: {accion_seleccionada_temp} (reemplazando selección anterior)")
+                            _historia_tts_speak(accion_seleccionada_temp, tipo="accion")
+                    print(f"Acciones seleccionadas: {acciones_seleccionadas}")
+                    # Continuar en el bucle para mostrar la selección actualizada
+        
+        # Procesar el botón "Siguiente" si está presionado
+        if siguiente_pressed_acciones:
+            siguiente_press_frames_acciones += 1
+            if siguiente_press_frames_acciones >= 10:  # Después de 10 frames, procesar la acción
+                print("Botón Siguiente procesado - pasando a selección de lugares")
+                # Detener streams de acciones antes de ir a lugares
+                rgb_stream.stop()
+                depth_stream.stop()
+                
+                # Llamar a la vista de selección de lugares
+                lugares_seleccionados = mostrar_seleccion_lugares(
+                    device, coordenadas, dmax_map, dmin_map, draw_logo_func,
+                    existing_window_name=window_name
+                )
+                
+                # Si se canceló (retornó None o "MENU"), retornar None o "MENU"
+                if lugares_seleccionados is None or lugares_seleccionados == "MENU":
+                    return lugares_seleccionados
+                else:
+                    # Retornar diccionario con acciones y lugares
+                    return {
+                        'acciones': acciones_seleccionadas,
+                        'lugares': lugares_seleccionados
+                    }
+        
+        # Redibujar la pantalla en cada frame
+        temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            temp_screen[y, :] = [b, g, r]
+        draw_logo_smaller_acciones(temp_screen)
+        draw_accion_cards(temp_screen, accion_positions, selected_cards=acciones_seleccionadas)
+        draw_acciones_seleccionadas(temp_screen, len(acciones_seleccionadas))
+        draw_back_card_acciones(temp_screen, elevated=back_elevated_acciones)
+        draw_close_card_acciones(temp_screen, elevated=close_elevated_acciones)
+        # Bloquear botón si no hay exactamente 1 acción seleccionada
+        is_blocked = len(acciones_seleccionadas) != 1
+        draw_siguiente_button_acciones(temp_screen, elevated=siguiente_elevated_acciones, blocked=is_blocked)
+        acciones_screen_scaled = scale_to_videobeam(temp_screen)
+        cv2.imshow(window_name, acciones_screen_scaled)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            # Solo cerrar si se presiona 'q' explícitamente
+            rgb_stream.stop()
+            depth_stream.stop()
+            return None
+    
+    # Detener streams y cerrar (esto no debería ejecutarse normalmente)
+    rgb_stream.stop()
+    depth_stream.stop()
+    return acciones_seleccionadas if acciones_seleccionadas else None  # Retornar las acciones seleccionadas (o None si no hay ninguna)
+
+def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
+    """
+    Muestra la vista de selección de lugares con 6 cards.
+    
+    Args:
+        device: Dispositivo OpenNI2
+        coordenadas: Diccionario con las coordenadas de calibración
+        dmax_map: Mapa de profundidad máximo
+        dmin_map: Mapa de profundidad mínimo
+        draw_logo_func: Función para dibujar el logo en la pantalla
+        existing_window_name: Nombre de ventana existente para reutilizar (opcional)
+    
+    Returns:
+        list, "MENU" o None: Lista de lugares seleccionados, "MENU" si se debe volver al menú, o None si se canceló
+    """
+    # Extraer coordenadas
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+    
+    # Tamaño de la pantalla del videobeam (viewport)
+    view_width = 1280
+    view_height = 800
+    
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """Escala una imagen de la resolución fuente a la resolución del videobeam."""
+        if image is None or image.size == 0:
+            return image
+        scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+        return scaled_image
+    
+    # Crear fondo
+    lugares_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de colores (mismo estilo que el menú)
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        lugares_screen[y, :] = [b, g, r]
+    
+    # Dibujar el logo (un poco más pequeño - 95% del tamaño original)
+    def draw_logo_smaller_lugares(screen):
+        logo_loaded_local = False
+        logo_image_local = None
+        
+        try:
+            if os.path.exists("images/logo.png"):
+                logo_image_local = cv2.imread("images/logo.png", cv2.IMREAD_UNCHANGED)
+                if logo_image_local is not None:
+                    logo_loaded_local = True
+            elif os.path.exists("images/logo.svg"):
+                try:
+                    logo_surface = pygame.image.load("images/logo.svg")
+                    logo_string = pygame.image.tostring(logo_surface, "RGBA")
+                    logo_np = np.frombuffer(logo_string, np.uint8)
+                    logo_image_local = logo_np.reshape((logo_surface.get_height(), logo_surface.get_width(), 4))
+                    logo_image_local = cv2.cvtColor(logo_image_local, cv2.COLOR_RGBA2BGRA)
+                    logo_loaded_local = True
+                except Exception:
+                    logo_loaded_local = False
+        except Exception:
+            logo_loaded_local = False
+        
+        if logo_loaded_local and logo_image_local is not None:
+            logo_height = 114  # 95% de 120 (casi imperceptible)
+            if len(logo_image_local.shape) == 3:
+                original_height, original_width = logo_image_local.shape[:2]
+            else:
+                original_height, original_width = logo_image_local.shape[0], logo_image_local.shape[1]
+            
+            aspect_ratio = original_width / original_height
+            logo_width = int(logo_height * aspect_ratio)
+            logo_resized = cv2.resize(logo_image_local, (logo_width, logo_height), interpolation=cv2.INTER_AREA)
+            logo_x = (view_width - logo_width) // 2
+            logo_y = 20  # Subido un poco más (de 30 a 20)
+            
+            if logo_x >= 0 and logo_y >= 0 and logo_x + logo_width <= view_width and logo_y + logo_height <= view_height:
+                if len(logo_resized.shape) == 3 and logo_resized.shape[2] == 4:
+                    alpha = logo_resized[:, :, 3] / 255.0
+                    for c in range(3):
+                        screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c] = (
+                            alpha * logo_resized[:, :, c] + (1 - alpha) * screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width, c]
+                        )
+                elif len(logo_resized.shape) == 3:
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_resized[:, :, :3]
+                else:
+                    logo_bgr = cv2.cvtColor(logo_resized, cv2.COLOR_GRAY2BGR)
+                    screen[logo_y:logo_y+logo_height, logo_x:logo_x+logo_width] = logo_bgr
+        else:
+            draw_logo_func(screen)
+    
+    draw_logo_smaller_lugares(lugares_screen)
+    
+    # Función para dibujar card redonda con flecha hacia la izquierda (estilo infantil) - en la parte superior izquierda
+    def draw_back_card_lugares(screen, elevated=False):
+        """
+        Dibuja una card redonda con flecha hacia la izquierda en el centro, estilo infantil, azul con flecha blanca
+        en la parte superior izquierda
+        """
+        # Posición base del lado izquierdo (parte superior)
+        base_card_radius = 50
+        card_margin_x = 120  # Movido más a la izquierda
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (card_margin_x + int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (0, 100, 100))  # Azul para la sombra
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente azul pastel (simulado con círculos concéntricos)
+        color_intensity = 1.15 if elevated else 1.0
+        base_blue_light = int(100 * color_intensity)
+        base_blue_medium = int(50 * color_intensity)
+        base_blue_dark = int(30 * color_intensity)
+        base_blue_light = min(255, base_blue_light)
+        base_blue_medium = min(255, base_blue_medium)
+        base_blue_dark = min(255, base_blue_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (255, base_blue_light, base_blue_light), -1)
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (255, base_blue_medium, base_blue_medium), -1)
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (255, base_blue_dark, base_blue_dark), -1)
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la flecha hacia la izquierda blanca en el centro
+        arrow_size = int(card_radius * 0.4)
+        thickness = 5
+        
+        # Punto de inicio de la flecha (punta)
+        arrow_tip_x = card_center[0] - arrow_size
+        arrow_tip_y = card_center[1]
+        
+        # Punto final de la flecha (cola)
+        arrow_tail_x = card_center[0] + arrow_size
+        arrow_tail_y = card_center[1]
+        
+        # Puntos para las dos líneas de la flecha (formando un triángulo)
+        arrow_top_x = arrow_tail_x - arrow_size * 0.3
+        arrow_top_y = arrow_tail_y - arrow_size * 0.5
+        arrow_bottom_x = arrow_tail_x - arrow_size * 0.3
+        arrow_bottom_y = arrow_tail_y + arrow_size * 0.5
+        
+        # Sombra de la flecha
+        shadow_offset_arrow = 2
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (arrow_tail_x + shadow_offset_arrow, arrow_tail_y + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (int(arrow_top_x) + shadow_offset_arrow, int(arrow_top_y) + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x + shadow_offset_arrow, arrow_tip_y + shadow_offset_arrow), 
+                (int(arrow_bottom_x) + shadow_offset_arrow, int(arrow_bottom_y) + shadow_offset_arrow), 
+                (150, 150, 150), thickness)
+        
+        # Flecha blanca principal
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (arrow_tail_x, arrow_tail_y), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (int(arrow_top_x), int(arrow_top_y)), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (arrow_tip_x, arrow_tip_y), 
+                (int(arrow_bottom_x), int(arrow_bottom_y)), 
+                (255, 255, 255), thickness)
+    
+    # Función para dibujar card redonda con X (estilo infantil) - en la parte superior derecha
+    def draw_close_card_lugares(screen, elevated=False):
+        """
+        Dibuja una card redonda con X en el centro, estilo infantil, roja con X blanca
+        en la parte superior derecha
+        """
+        # Posición base del lado derecho (parte superior)
+        base_card_radius = 50
+        card_margin_x = 180
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (view_width - card_margin_x - int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (100, 0, 0))
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente rojo pastel (simulado con círculos concéntricos)
+        color_intensity = 1.15 if elevated else 1.0
+        base_red_light = int(100 * color_intensity)
+        base_red_medium = int(50 * color_intensity)
+        base_red_dark = int(30 * color_intensity)
+        base_red_light = min(255, base_red_light)
+        base_red_medium = min(255, base_red_medium)
+        base_red_dark = min(255, base_red_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (base_red_light, base_red_light, 255), -1)
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (base_red_medium, base_red_medium, 255), -1)
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (base_red_dark, base_red_dark, 255), -1)
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la X blanca en el centro
+        x_size = int(card_radius * 0.5)
+        thickness = 5
+        # Sombra de la X
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] - x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] + x_size + 2), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] + x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] - x_size + 2), 
+                (150, 150, 150), thickness)
+        # X blanca principal
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] - x_size), 
+                (card_center[0] + x_size, card_center[1] + x_size), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] + x_size), 
+                (card_center[0] + x_size, card_center[1] - x_size), 
+                (255, 255, 255), thickness)
+    
+    # Variables para la card de retroceso (necesarias para la detección)
+    back_card_radius_lugares = 50
+    back_card_margin_x_lugares = 120  # Movido más a la izquierda
+    back_card_margin_y_lugares = 80
+    back_card_center_x_lugares = back_card_margin_x_lugares + back_card_radius_lugares
+    back_card_center_y_lugares = back_card_margin_y_lugares + back_card_radius_lugares
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    back_card_detection_size_lugares = back_card_radius_lugares * 2.4
+    back_card_detection_x_lugares = back_card_center_x_lugares - back_card_radius_lugares * 1.2
+    back_card_detection_y_lugares = back_card_center_y_lugares - back_card_radius_lugares * 1.2
+    back_card_detection_w_lugares = back_card_detection_size_lugares
+    back_card_detection_h_lugares = back_card_detection_size_lugares
+    
+    # Función para detectar si se tocó la card de retroceso
+    def detectar_back_card_touch_lugares(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de retroceso"""
+        return (back_card_detection_x_lugares <= x_touch <= back_card_detection_x_lugares + back_card_detection_w_lugares and
+                back_card_detection_y_lugares <= y_touch <= back_card_detection_y_lugares + back_card_detection_h_lugares)
+    
+    # Variables para la card de cerrar (necesarias para la detección)
+    close_card_radius_lugares = 50
+    close_card_margin_x_lugares = 180
+    close_card_margin_y_lugares = 80
+    close_card_center_x_lugares = view_width - close_card_margin_x_lugares - close_card_radius_lugares
+    close_card_center_y_lugares = close_card_margin_y_lugares + close_card_radius_lugares
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    close_card_detection_size_lugares = close_card_radius_lugares * 2.4
+    close_card_detection_x_lugares = close_card_center_x_lugares - close_card_radius_lugares * 1.2
+    close_card_detection_y_lugares = close_card_center_y_lugares - close_card_radius_lugares * 1.2
+    close_card_detection_w_lugares = close_card_detection_size_lugares
+    close_card_detection_h_lugares = close_card_detection_size_lugares
+    
+    # Función para detectar si se tocó la card de cerrar
+    def detectar_close_card_touch_lugares(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de cerrar"""
+        return (close_card_detection_x_lugares <= x_touch <= close_card_detection_x_lugares + close_card_detection_w_lugares and
+                close_card_detection_y_lugares <= y_touch <= close_card_detection_y_lugares + close_card_detection_h_lugares)
+    
+    # Definir los 6 lugares
+    lugares = [
+        {"nombre": "Calle", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Calle.png"},
+        {"nombre": "Clinica", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Clinica.png"},
+        {"nombre": "Estacion-Policia", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
+        {"nombre": "Escuela", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
+        {"nombre": "Casa", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
+        {"nombre": "Parque", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Parque.png"}
+    ]
+    
+    # Cargar imágenes de los lugares si existen
+    lugar_images = {}
+    for lugar in lugares:
+        if "imagen" in lugar and os.path.exists(lugar["imagen"]):
+            img = cv2.imread(lugar["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                lugar_images[lugar["nombre"]] = img
+                print(f"✓ Imagen cargada para {lugar['nombre']}: {lugar['imagen']}")
+            else:
+                print(f"⚠ No se pudo cargar la imagen para {lugar['nombre']}: {lugar['imagen']}")
+    
+    # Título
+    titulo_texto = "Selecciona un lugar"
+    font_titulo = cv2.FONT_HERSHEY_DUPLEX
+    font_scale_titulo = 1.2
+    thickness_titulo = 3
+    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
+    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    text_y_titulo = 120  # Posición del título
+    
+    # Sombra del título
+    put_text_ubuntu(lugares_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+               font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+    # Título principal
+    put_text_ubuntu(lugares_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+               font_scale_titulo, (255, 255, 255), thickness_titulo)
+    
+    # Función para dibujar el texto de lugares seleccionados
+    def draw_lugares_seleccionados(screen, num_seleccionados):
+        """
+        Dibuja el texto que muestra el número de lugares seleccionados
+        """
+        texto = f"Lugares seleccionados: {num_seleccionados}"
+        font_scale = 1.2  # Aumentado de 0.9 a 1.2 (similar al juego de clasificación)
+        thickness = 3  # Aumentado de 2 a 3 (similar al juego de clasificación)
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+        
+        # Centrar texto horizontalmente
+        text_x = (view_width - text_width) // 2
+        text_y = 145  # Subido más (de 190 a 145)
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, (255, 255, 255), thickness, bold=True)
+    
+    # Dimensiones de las cards (más pequeñas para 6 cards en 2 filas de 3)
+    card_width = 240  # Reducido de 280 a 240
+    card_height = 210  # Reducido de 250 a 210
+    card_spacing = 25  # Reducido de 30 a 25
+    
+    # Calcular posiciones (centradas, 3 cards por fila, 2 filas)
+    total_width = 3 * card_width + 2 * card_spacing
+    start_x = (view_width - total_width) // 2 - 30  # Movido un poco a la izquierda
+    start_y = 180  # Subido un poco más (de 200 a 180)
+    
+    lugar_positions = {}
+    for idx, lugar in enumerate(lugares):
+        row = idx // 3
+        col = idx % 3
+        x = start_x + col * (card_width + card_spacing)
+        y = start_y + row * (card_height + card_spacing)
+        lugar_positions[lugar["nombre"]] = {
+            'x': x,
+            'y': y,
+            'width': card_width,
+            'height': card_height,
+            'color': lugar["color"],
+            'imagen': lugar_images.get(lugar["nombre"])
+        }
+    
+    # Función para dibujar las cards de lugares
+    def draw_lugar_cards(screen, lugar_positions, selected_cards=None):
+        if selected_cards is None:
+            selected_cards = []
+        for nombre, pos in lugar_positions.items():
+            x, y = pos['x'], pos['y']
+            w, h = pos['width'], pos['height']
+            color = pos['color']
+            img = pos.get('imagen')
+            
+            # Determinar si está seleccionada
+            is_selected = nombre in selected_cards
+            
+            # Efecto de elevación si está seleccionada
+            elevation_offset = 0
+            scale_factor = 1.0
+            shadow_offset_base = 5
+            
+            if is_selected:
+                elevation_offset = -8
+                scale_factor = 1.08
+                shadow_offset_base = 8
+            
+            w_scaled = int(w * scale_factor)
+            h_scaled = int(h * scale_factor)
+            x_scaled = x - (w_scaled - w) // 2
+            y_scaled = y + elevation_offset - (h_scaled - h) // 2
+            
+            # Asegurar que no se salga de los límites
+            x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+            y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+            
+            # Dibujar sombra
+            shadow_offset = int(shadow_offset_base * scale_factor)
+            shadow_color = (40, 40, 40)
+            for i in range(3, 0, -1):
+                shadow_alpha = i / 3.0
+                shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+                offset_layer = shadow_offset + (3 - i)
+                cv2.rectangle(screen, 
+                            (x_scaled + offset_layer, y_scaled + offset_layer), 
+                            (x_scaled + w_scaled + offset_layer, y_scaled + h_scaled + offset_layer), 
+                            shadow_color_layer, -1)
+            
+            # Color del borde (verde si está seleccionada)
+            border_color = (0, 255, 0) if is_selected else (100, 100, 100)
+            border_thickness = 5 if is_selected else 2
+            
+            # Dibujar la card
+            if img is not None:
+                # Redimensionar imagen para que quepa en la card
+                img_resized = cv2.resize(img, (w_scaled, h_scaled), interpolation=cv2.INTER_AREA)
+                
+                # Si la imagen tiene canal alpha, compositar
+                if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                    # Con transparencia
+                    alpha = img_resized[:, :, 3] / 255.0
+                    img_bgr = img_resized[:, :, :3]
+                    for c in range(3):
+                        screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c] = (
+                            alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c]
+                        )
+                else:
+                    # Sin transparencia
+                    screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled] = img_resized[:, :, :3]
+            else:
+                # Si no hay imagen, dibujar card con color
+                cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), color, -1)
+            
+            # Dibujar borde (verde si está seleccionada)
+            cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+    
+    # Función para dibujar el botón "Jugar"
+    def draw_jugar_button(screen, elevated=False, blocked=False):
+        """
+        Dibuja un botón "Jugar" en la parte inferior de la pantalla
+        """
+        button_width = 200
+        button_height = 60
+        button_margin_bottom = 90  # Ajustado para bajar un poco el botón
+        button_x = (view_width - button_width) // 2  # Centrado horizontalmente
+        button_y = view_height - button_margin_bottom - button_height
+        
+        # Efecto de elevación si está elevado (solo si no está bloqueado)
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated and not blocked:
+            elevation_offset = -5
+            scale_factor = 1.05
+            shadow_offset_base = 8
+        
+        w_scaled = int(button_width * scale_factor)
+        h_scaled = int(button_height * scale_factor)
+        x_scaled = button_x - (w_scaled - button_width) // 2
+        y_scaled = button_y + elevation_offset - (h_scaled - button_height) // 2
+        
+        # Asegurar que no se salga de los límites
+        x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
+        y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+        
+        # Dibujar sombra (más suave si está bloqueado)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        shadow_color = (40, 40, 40) if not blocked else (20, 20, 20)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0
+            shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+            offset_layer = shadow_offset + (3 - i)
+            cv2.rectangle(screen, 
+                        (x_scaled + offset_layer, y_scaled + offset_layer), 
+                        (x_scaled + w_scaled + offset_layer, y_scaled + h_scaled + offset_layer), 
+                        shadow_color_layer, -1)
+        
+        # Color del botón (gris si está bloqueado, verde si no)
+        if blocked:
+            button_color = (100, 100, 100)  # Gris cuando está bloqueado
+            border_color = (80, 80, 80)  # Borde gris oscuro
+            text_color = (150, 150, 150)  # Texto gris claro
+        else:
+            button_color = (100, 255, 100) if not elevated else (150, 255, 150)
+            border_color = (0, 200, 0)
+            text_color = (255, 255, 255)  # Texto blanco
+        
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), button_color, -1)
+        
+        # Borde del botón
+        border_thickness = 3
+        cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+        
+        # Texto "Jugar" - aumentado y centrado
+        texto = "Jugar"
+        font_scale = 1.5 * scale_factor  # Aumentado de 0.8 a 1.5
+        thickness = 3  # Aumentado de 2 a 3 para más bold
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font
+        bbox_top = 0
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font = get_ubuntu_font(font_scale=font_scale, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]  # Top of bbox (usually negative for ascenders)
+            except AttributeError:
+                bbox = font.getbbox(texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                bbox_top = bbox[1]
+        except:
+            font = cv2.FONT_HERSHEY_DUPLEX
+            text_size, _ = cv2.getTextSize(texto, font, font_scale, thickness)
+            text_width = text_size[0]
+            text_height = text_size[1]
+            bbox_top = 0
+        
+        # Centrar texto en el botón
+        text_x = x_scaled + (w_scaled - text_width) // 2
+        # PIL usa y como baseline. Para centrar verticalmente, necesitamos ajustar considerando el bbox_top
+        # Mover el texto más arriba para que no sobresalga del botón
+        if bbox_top < 0:
+            # Hay ascenders, ajustar la posición moviendo más arriba
+            # Restar más para subir el texto
+            text_y = y_scaled + h_scaled // 2 + abs(bbox_top) // 2 - text_height // 2
+        else:
+            # Sin ascenders significativos, centrar normalmente pero más arriba
+            text_y = y_scaled + h_scaled // 2 - text_height // 2
+        
+        # Sombra del texto
+        put_text_ubuntu(screen, texto, (text_x + 2, text_y + 2), 
+                   font_scale, (0, 0, 0), thickness + 1, bold=True)
+        # Texto principal
+        put_text_ubuntu(screen, texto, (text_x, text_y), 
+                   font_scale, text_color, thickness, bold=True)
+    
+    # Variables para el botón "Jugar"
+    jugar_button_width = 200
+    jugar_button_height = 60
+    jugar_button_margin_bottom = 90
+    jugar_button_x = (view_width - jugar_button_width) // 2
+    jugar_button_y = view_height - jugar_button_margin_bottom - jugar_button_height
+    
+    # Función para detectar si se tocó el botón "Jugar"
+    def detectar_jugar_button_touch(x_touch, y_touch):
+        """Detecta si el toque está dentro del área del botón Jugar"""
+        return (jugar_button_x <= x_touch <= jugar_button_x + jugar_button_width and
+                jugar_button_y <= y_touch <= jugar_button_y + jugar_button_height)
+    
+    # Dibujar las cards, la flecha de retroceso y la X (sin selección inicial)
+    draw_lugar_cards(lugares_screen, lugar_positions, selected_cards=[])
+    draw_lugares_seleccionados(lugares_screen, 0)  # Inicialmente 0 seleccionados
+    draw_back_card_lugares(lugares_screen, elevated=False)
+    draw_close_card_lugares(lugares_screen, elevated=False)
+    draw_jugar_button(lugares_screen, elevated=False, blocked=True)  # Bloqueado inicialmente
+    
+    # Configurar ventana
+    window_name = existing_window_name if existing_window_name else "Selección de Lugares"
+    window_exists = False
+    try:
+        window_exists = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0
+    except:
+        pass
+    
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    
+    lugares_screen_scaled = scale_to_videobeam(lugares_screen)
+    cv2.imshow(window_name, lugares_screen_scaled)
+    
+    # Iniciar streams de cámara para detección de toques
+    rgb_stream = device.create_color_stream()
+    depth_stream = device.create_depth_stream()
+    rgb_stream.start()
+    depth_stream.start()
+    
+    lugares_seleccionados = []  # Lista de lugares seleccionados
+    jugar_elevated = False
+    jugar_pressed = False
+    jugar_press_frames = 0
+    back_elevated_lugares = False
+    close_elevated_lugares = False
+    frame_count = 0
+    initialization_delay = 10
+    
+    # Sistema de debounce temporal
+    from collections import defaultdict
+    touch_history = defaultdict(list)
+    min_touch_frames = 2
+    touch_persistence_threshold = 0.8
+    min_touch_area = 100
+    max_touch_area = 50000
+    last_valid_touch_time = time.time()
+    touch_cooldown = 0.15
+    history_cleanup_interval = 30
+    max_history_age = 1.0
+    
+    # Bucle principal de detección de toques
+    while True:
+        frame_count += 1
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        
+        if frame is None or depth_frame is None:
+            continue
+        
+        rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+        bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+        bgr_data = cv2.flip(bgr_data, 1)
+        bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        
+        # Crear la máscara de toques
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        
+        # Aplicar filtros
+        touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
+        
+        if frame_count < initialization_delay:
+            # Redibujar la pantalla durante el delay
+            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            for y in range(view_height):
+                ratio = y / view_height
+                r = int(255 * (0.3 + 0.4 * ratio))
+                g = int(200 * (0.5 + 0.3 * ratio))
+                b = int(255 * (0.8 - 0.3 * ratio))
+                temp_screen[y, :] = [b, g, r]
+            draw_logo_smaller_lugares(temp_screen)
+            draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
+            draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
+            draw_back_card_lugares(temp_screen, elevated=False)
+            draw_close_card_lugares(temp_screen, elevated=False)
+            is_blocked = len(lugares_seleccionados) != 1
+            draw_jugar_button(temp_screen, elevated=False, blocked=is_blocked)
+            lugares_screen_scaled = scale_to_videobeam(temp_screen)
+            cv2.imshow(window_name, lugares_screen_scaled)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            continue
+        
+        # Encontrar contornos
+        contours, _ = cv2.findContours(touch_mask_filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Limpiar historial antiguo
+        current_time = time.time()
+        if frame_count % history_cleanup_interval == 0:
+            for key in list(touch_history.keys()):
+                touch_history[key] = [
+                    touch for touch in touch_history[key] 
+                    if current_time - touch[3] < max_history_age
+                ]
+                if not touch_history[key]:
+                    del touch_history[key]
+        
+        # Procesar contornos
+        valid_touches_this_frame = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if min_touch_area <= area <= max_touch_area:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    
+                    # Mapeo de coordenadas
+                    x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                    
+                    # Agregar a historial
+                    touch_key = (x_touch // 25, y_touch // 25)
+                    touch_history[touch_key].append((x_touch, y_touch, area, current_time))
+                    
+                    # Verificar persistencia
+                    if len(touch_history[touch_key]) >= min_touch_frames:
+                        if current_time - last_valid_touch_time > touch_cooldown:
+                            recent_touches = touch_history[touch_key][-min_touch_frames:]
+                            all_recent = all(current_time - touch[3] < 1.0 for touch in recent_touches)
+                            
+                            if all_recent and len(recent_touches) >= min_touch_frames:
+                                areas = [touch[2] for touch in recent_touches]
+                                avg_area = sum(areas) / len(areas)
+                                
+                                if min(areas) > 0:
+                                    area_variance = max(areas) / min(areas)
+                                    if area_variance < 3.5 and min_touch_area <= avg_area <= max_touch_area:
+                                        valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+        
+        # Procesar toques válidos
+        for x_touch, y_touch, touch_key in valid_touches_this_frame:
+            if touch_key in touch_history:
+                del touch_history[touch_key]
+            last_valid_touch_time = current_time
+            
+            # Verificar si se tocó el botón de retroceso (flecha)
+            if detectar_back_card_touch_lugares(x_touch, y_touch):
+                print("Card de retroceso tocada en selección de lugares")
+                # Mostrar efecto de elevación en la flecha
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_func(temp_screen)
+                draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
+                draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
+                draw_back_card_lugares(temp_screen, elevated=True)
+                draw_close_card_lugares(temp_screen, elevated=False)
+                is_blocked = len(lugares_seleccionados) != 1
+                draw_jugar_button(temp_screen, elevated=False, blocked=is_blocked)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver a la vista anterior (retornar "BACK" para indicar retroceso)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return "BACK"
+            
+            # Verificar si se tocó la X
+            if detectar_close_card_touch_lugares(x_touch, y_touch):
+                print("Card de cerrar tocada en selección de lugares")
+                # Mostrar efecto de elevación en la X
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_func(temp_screen)
+                draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
+                draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
+                draw_back_card_lugares(temp_screen, elevated=False)
+                draw_close_card_lugares(temp_screen, elevated=True)
+                is_blocked = len(lugares_seleccionados) != 1
+                draw_jugar_button(temp_screen, elevated=False, blocked=is_blocked)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver al menú principal (retornar "MENU" para indicar que se debe volver al menú)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return "MENU"
+            
+            # Verificar si se está tocando el botón de retroceso
+            if detectar_back_card_touch_lugares(x_touch, y_touch):
+                back_elevated_lugares = True
+            else:
+                back_elevated_lugares = False
+            
+            # Verificar si se está tocando el botón "Jugar"
+            if detectar_jugar_button_touch(x_touch, y_touch):
+                if len(lugares_seleccionados) == 1:  # Requiere exactamente 1 lugar
+                    if not jugar_pressed:
+                        # Iniciar el efecto de elevación
+                        jugar_pressed = True
+                        jugar_press_frames = 0
+                        jugar_elevated = True
+                        print("Botón Jugar presionado en selección de lugares")
+                else:
+                    jugar_elevated = False
+                    jugar_pressed = False
+                    jugar_press_frames = 0
+                    print("Botón Jugar bloqueado - selecciona al menos un lugar")
+            else:
+                # Si no se está tocando el botón, resetear estado
+                if jugar_pressed:
+                    jugar_pressed = False
+                    jugar_press_frames = 0
+                jugar_elevated = False
+                
+                # Verificar si se seleccionó un lugar
+                lugar_seleccionado_temp = None
+                for nombre, pos in lugar_positions.items():
+                    x, y = pos['x'], pos['y']
+                    w, h = pos['width'], pos['height']
+                    if x <= x_touch <= x + w and y <= y_touch <= y + h:
+                        lugar_seleccionado_temp = nombre
+                        break
+                
+                if lugar_seleccionado_temp:
+                    # Toggle de selección: si ya está seleccionado, deseleccionarlo; si no, seleccionarlo
+                    if lugar_seleccionado_temp in lugares_seleccionados:
+                        lugares_seleccionados.remove(lugar_seleccionado_temp)
+                        print(f"Lugar deseleccionado: {lugar_seleccionado_temp}")
+                    else:
+                        # Limitar a máximo 1 lugar
+                        if len(lugares_seleccionados) < 1:
+                            lugares_seleccionados.append(lugar_seleccionado_temp)
+                            print(f"Lugar seleccionado: {lugar_seleccionado_temp}")
+                            _historia_tts_speak(lugar_seleccionado_temp, tipo="lugar")
+                        else:
+                            # Si ya hay un lugar seleccionado, reemplazarlo
+                            lugares_seleccionados.clear()
+                            lugares_seleccionados.append(lugar_seleccionado_temp)
+                            print(f"Lugar seleccionado: {lugar_seleccionado_temp} (reemplazando selección anterior)")
+                            _historia_tts_speak(lugar_seleccionado_temp, tipo="lugar")
+                    print(f"Lugares seleccionados: {lugares_seleccionados}")
+                    # Continuar en el bucle para mostrar la selección actualizada
+        
+        # Procesar el botón "Jugar" si está presionado
+        if jugar_pressed:
+            jugar_press_frames += 1
+            if jugar_press_frames >= 10:  # Después de 10 frames, procesar la acción
+                print("Botón Jugar procesado - pasando a vista final")
+                # Detener streams de lugares antes de ir a la vista final
+                rgb_stream.stop()
+                depth_stream.stop()
+                
+                # Retornar los lugares seleccionados (la función que llama manejará la vista final)
+                return lugares_seleccionados
+        
+        # Redibujar la pantalla en cada frame
+        temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            temp_screen[y, :] = [b, g, r]
+        draw_logo_smaller_lugares(temp_screen)
+        draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
+        draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
+        draw_back_card_lugares(temp_screen, elevated=back_elevated_lugares)
+        draw_close_card_lugares(temp_screen, elevated=close_elevated_lugares)
+        # Bloquear botón si no hay exactamente 1 lugar seleccionado
+        is_blocked = len(lugares_seleccionados) != 1
+        draw_jugar_button(temp_screen, elevated=jugar_elevated, blocked=is_blocked)
+        lugares_screen_scaled = scale_to_videobeam(temp_screen)
+        cv2.imshow(window_name, lugares_screen_scaled)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            # Solo cerrar si se presiona 'q' explícitamente
+            rgb_stream.stop()
+            depth_stream.stop()
+            return None
+    
+    # Detener streams y cerrar (esto no debería ejecutarse normalmente)
+    rgb_stream.stop()
+    depth_stream.stop()
+    return lugares_seleccionados if lugares_seleccionados else None  # Retornar los lugares seleccionados (o None si no hay ninguno)
+
+def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados, existing_window_name=None):
+    """
+    Muestra la vista final con las 4 cards seleccionadas (2 sujetos, 1 acción, 1 lugar).
+    
+    Args:
+        device: Dispositivo OpenNI2
+        coordenadas: Diccionario con las coordenadas de calibración
+        dmax_map: Mapa de profundidad máximo
+        dmin_map: Mapa de profundidad mínimo
+        draw_logo_func: Función para dibujar el logo en la pantalla
+        sujetos_seleccionados: Lista de sujetos seleccionados (máximo 2)
+        acciones_seleccionadas: Lista de acciones seleccionadas (máximo 1)
+        lugares_seleccionados: Lista de lugares seleccionados (máximo 1)
+        existing_window_name: Nombre de ventana existente para reutilizar (opcional)
+    
+    Returns:
+        "MENU" o None: "MENU" si se debe volver al menú, None si se canceló
+    """
+    # Extraer coordenadas
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+    
+    # Tamaño de la pantalla del videobeam (viewport)
+    view_width = 1280
+    view_height = 800
+    
+    # Resolución del videobeam (segunda pantalla)
+    VIDEOBEAM_WIDTH = 1920
+    VIDEOBEAM_HEIGHT = 1080
+    
+    def scale_to_videobeam(image, source_width=1280, source_height=800):
+        """Escala una imagen de la resolución fuente a la resolución del videobeam."""
+        if image is None or image.size == 0:
+            return image
+        scaled_image = cv2.resize(image, (VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT), interpolation=cv2.INTER_LINEAR)
+        return scaled_image
+    
+    # Crear fondo
+    final_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de colores (mismo estilo que el menú)
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        final_screen[y, :] = [b, g, r]
+    
+    # Dibujar el logo
+    draw_logo_func(final_screen)
+    
+    # Función para dibujar card redonda con X (estilo infantil) - en la parte superior derecha
+    def draw_close_card_final(screen, elevated=False):
+        """
+        Dibuja una card redonda con X en el centro, estilo infantil, roja con X blanca
+        en la parte superior derecha
+        """
+        # Posición base del lado derecho (parte superior)
+        base_card_radius = 50
+        card_margin_x = 180
+        card_margin_y = 80  # Margen desde el borde superior
+        
+        # Efecto de elevación si está elevada
+        elevation_offset = 0
+        scale_factor = 1.0
+        shadow_offset_base = 5
+        
+        if elevated:
+            elevation_offset = -15  # Mover hacia arriba
+            scale_factor = 1.08  # Aumentar tamaño ligeramente
+            shadow_offset_base = 10  # Sombra más grande cuando está elevada
+        
+        card_radius = int(base_card_radius * scale_factor)
+        card_center = (view_width - card_margin_x - int(base_card_radius * scale_factor), 
+                       card_margin_y + int(base_card_radius * scale_factor) + elevation_offset)
+        
+        # Sombra suave (múltiples capas para efecto infantil)
+        shadow_offset = int(shadow_offset_base * scale_factor)
+        for i in range(3, 0, -1):
+            shadow_alpha = i / 3.0 * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (100, 0, 0))
+            offset = shadow_offset + (3 - i)
+            cv2.circle(screen, 
+                      (card_center[0] + offset, card_center[1] + offset), 
+                      card_radius, shadow_color, -1)
+        
+        # Gradiente rojo pastel (simulado con círculos concéntricos)
+        color_intensity = 1.15 if elevated else 1.0
+        base_red_light = int(100 * color_intensity)
+        base_red_medium = int(50 * color_intensity)
+        base_red_dark = int(30 * color_intensity)
+        base_red_light = min(255, base_red_light)
+        base_red_medium = min(255, base_red_medium)
+        base_red_dark = min(255, base_red_dark)
+        
+        # Círculo exterior más claro
+        cv2.circle(screen, card_center, card_radius, (base_red_light, base_red_light, 255), -1)
+        # Círculo interior más intenso
+        cv2.circle(screen, card_center, int(card_radius * 0.85), (base_red_medium, base_red_medium, 255), -1)
+        # Círculo más interno
+        cv2.circle(screen, card_center, int(card_radius * 0.7), (base_red_dark, base_red_dark, 255), -1)
+        
+        # Borde blanco suave (estilo infantil)
+        cv2.circle(screen, card_center, card_radius, (255, 255, 255), 4)
+        cv2.circle(screen, card_center, card_radius - 2, (200, 200, 200), 2)
+        
+        # Dibujar la X blanca en el centro
+        x_size = int(card_radius * 0.5)
+        thickness = 5
+        # Sombra de la X
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] - x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] + x_size + 2), 
+                (150, 150, 150), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size + 2, card_center[1] + x_size + 2), 
+                (card_center[0] + x_size + 2, card_center[1] - x_size + 2), 
+                (150, 150, 150), thickness)
+        # X blanca principal
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] - x_size), 
+                (card_center[0] + x_size, card_center[1] + x_size), 
+                (255, 255, 255), thickness)
+        cv2.line(screen, 
+                (card_center[0] - x_size, card_center[1] + x_size), 
+                (card_center[0] + x_size, card_center[1] - x_size), 
+                (255, 255, 255), thickness)
+    
+    # Variables para la card de cerrar (necesarias para la detección)
+    close_card_radius_final = 50
+    close_card_margin_x_final = 180
+    close_card_margin_y_final = 80
+    close_card_center_x_final = view_width - close_card_margin_x_final - close_card_radius_final
+    close_card_center_y_final = close_card_margin_y_final + close_card_radius_final
+    
+    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    close_card_detection_size_final = close_card_radius_final * 2.4
+    close_card_detection_x_final = close_card_center_x_final - close_card_radius_final * 1.2
+    close_card_detection_y_final = close_card_center_y_final - close_card_radius_final * 1.2
+    close_card_detection_w_final = close_card_detection_size_final
+    close_card_detection_h_final = close_card_detection_size_final
+    
+    # Función para detectar si se tocó la card de cerrar
+    def detectar_close_card_touch_final(x_touch, y_touch):
+        """Detecta si el toque está dentro del área de la card de cerrar"""
+        return (close_card_detection_x_final <= x_touch <= close_card_detection_x_final + close_card_detection_w_final and
+                close_card_detection_y_final <= y_touch <= close_card_detection_y_final + close_card_detection_h_final)
+    
+    # Importar componente de botón circular
+    from src.components import draw_circular_button, is_point_in_circular_button
+    
+    # Botón circular "Hablar" (misma lógica y posición que absurdos-visuales)
+    # Calcular posición igual que en absurdos-visuales
+    circle_radius_hablar = 60
+    circle_center_x_hablar = view_width // 2
+    espacio_para_franja = 100  # Espacio necesario para la franja "Escuchando..." (50 arriba + 50 abajo)
+    # Posición del botón: cerca de la parte inferior pero dejando espacio para la franja
+    circle_center_y_hablar = view_height - espacio_para_franja - circle_radius_hablar
+    
+    hablar_button_bounds_final = None  # Se inicializará cuando se dibuje
+    
+    # Cargar imágenes de sujetos, acciones y lugares
+    historias = [
+        {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Niño.png"},
+        {"nombre": "Niña", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Niña.png"},
+        {"nombre": "Doctor", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/doctor.png"},
+        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"},
+        {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Policia.png"},
+        {"nombre": "Perro", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Perro.png"}
+    ]
+    
+    acciones = [
+        {"nombre": "Dar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Dar.png"},
+        {"nombre": "Ayudar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
+        {"nombre": "Correr", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
+        {"nombre": "Jugar", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Jugar.png"},
+        {"nombre": "Llamar", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Llamar.png"},
+        {"nombre": "Trabajar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"}
+    ]
+    
+    lugares = [
+        {"nombre": "Calle", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Calle.png"},
+        {"nombre": "Clinica", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Clinica.png"},
+        {"nombre": "Estacion-Policia", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
+        {"nombre": "Escuela", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
+        {"nombre": "Casa", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
+        {"nombre": "Parque", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Parque.png"}
+    ]
+    
+    # Crear diccionarios para buscar imágenes
+    historia_images = {}
+    for historia in historias:
+        if os.path.exists(historia["imagen"]):
+            img = cv2.imread(historia["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                historia_images[historia["nombre"]] = img
+    
+    accion_images = {}
+    for accion in acciones:
+        if os.path.exists(accion["imagen"]):
+            img = cv2.imread(accion["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                accion_images[accion["nombre"]] = img
+    
+    lugar_images = {}
+    for lugar in lugares:
+        if os.path.exists(lugar["imagen"]):
+            img = cv2.imread(lugar["imagen"], cv2.IMREAD_UNCHANGED)
+            if img is not None:
+                lugar_images[lugar["nombre"]] = img
+    
+    # Preparar las 4 cards: 2 sujetos, 1 acción, 1 lugar
+    cards_final = []
+    
+    # Agregar sujetos (máximo 2)
+    for sujeto in sujetos_seleccionados[:2]:
+        for historia in historias:
+            if historia["nombre"] == sujeto:
+                cards_final.append({
+                    'nombre': sujeto,
+                    'tipo': 'sujeto',
+                    'color': historia["color"],
+                    'imagen': historia_images.get(sujeto)
+                })
+                break
+    
+    # Agregar acción (máximo 1)
+    if acciones_seleccionadas and len(acciones_seleccionadas) > 0:
+        accion = acciones_seleccionadas[0]
+        for acc in acciones:
+            if acc["nombre"] == accion:
+                cards_final.append({
+                    'nombre': accion,
+                    'tipo': 'accion',
+                    'color': acc["color"],
+                    'imagen': accion_images.get(accion)
+                })
+                break
+    
+    # Agregar lugar (máximo 1)
+    if lugares_seleccionados and len(lugares_seleccionados) > 0:
+        lugar = lugares_seleccionados[0]
+        for lug in lugares:
+            if lug["nombre"] == lugar:
+                cards_final.append({
+                    'nombre': lugar,
+                    'tipo': 'lugar',
+                    'color': lug["color"],
+                    'imagen': lugar_images.get(lugar)
+                })
+                break
+    
+    # Dimensiones de las cards (4 cards en una fila)
+    card_width = 250
+    card_height = 300
+    card_spacing = 30
+    
+    # Calcular posiciones (centradas, 4 cards en una fila)
+    total_width = len(cards_final) * card_width + (len(cards_final) - 1) * card_spacing
+    start_x = (view_width - total_width) // 2
+    start_y = 250  # Debajo del logo
+    
+    card_positions_final = {}
+    for idx, card in enumerate(cards_final):
+        x = start_x + idx * (card_width + card_spacing)
+        y = start_y
+        card_positions_final[card['nombre']] = {
+            'x': x,
+            'y': y,
+            'width': card_width,
+            'height': card_height,
+            'color': card['color'],
+            'imagen': card['imagen']
+        }
+    
+    # Función para dibujar las 4 cards finales (no presionables)
+    def draw_final_cards(screen, card_positions):
+        for nombre, pos in card_positions.items():
+            x, y = pos['x'], pos['y']
+            w, h = pos['width'], pos['height']
+            color = pos['color']
+            img = pos.get('imagen')
+            
+            # Dibujar sombra
+            shadow_offset = 5
+            shadow_color = (40, 40, 40)
+            for i in range(3, 0, -1):
+                shadow_alpha = i / 3.0
+                shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
+                offset_layer = shadow_offset + (3 - i)
+                cv2.rectangle(screen, 
+                            (x + offset_layer, y + offset_layer), 
+                            (x + w + offset_layer, y + h + offset_layer), 
+                            shadow_color_layer, -1)
+            
+            # Dibujar la card
+            if img is not None:
+                # Redimensionar imagen para que quepa en la card
+                img_resized = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+                
+                # Si la imagen tiene canal alpha, compositar
+                if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                    # Con transparencia
+                    alpha = img_resized[:, :, 3] / 255.0
+                    img_bgr = img_resized[:, :, :3]
+                    for c in range(3):
+                        screen[y:y+h, x:x+w, c] = (
+                            alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y:y+h, x:x+w, c]
+                        )
+                else:
+                    # Sin transparencia
+                    screen[y:y+h, x:x+w] = img_resized[:, :, :3]
+            else:
+                # Si no hay imagen, dibujar card con color
+                cv2.rectangle(screen, (x, y), (x + w, y + h), color, -1)
+            
+            # Dibujar borde
+            border_color = (100, 100, 100)
+            border_thickness = 2
+            cv2.rectangle(screen, (x, y), (x + w, y + h), border_color, border_thickness)
+    
+    # Dibujar las cards y la X
+    draw_final_cards(final_screen, card_positions_final)
+    draw_close_card_final(final_screen, elevated=False)
+    
+    # Configurar ventana
+    window_name = existing_window_name if existing_window_name else "Vista Final"
+    window_exists = False
+    try:
+        window_exists = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0
+    except:
+        pass
+    
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    
+    final_screen_scaled = scale_to_videobeam(final_screen)
+    cv2.imshow(window_name, final_screen_scaled)
+    
+    # Iniciar streams de cámara para detección de toques (solo para la X)
+    rgb_stream = device.create_color_stream()
+    depth_stream = device.create_depth_stream()
+    rgb_stream.start()
+    depth_stream.start()
+    
+    close_elevated_final = False
+    frame_count = 0
+    initialization_delay = 10
+    
+    # Sistema de debounce temporal
+    from collections import defaultdict
+    touch_history = defaultdict(list)
+    min_touch_frames = 2
+    min_touch_area = 100
+    max_touch_area = 50000
+    last_valid_touch_time = time.time()
+    touch_cooldown = 0.15
+    history_cleanup_interval = 30
+    max_history_age = 1.0
+    
+    # Bucle principal de detección de toques (solo para la X)
+    while True:
+        frame_count += 1
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        
+        if frame is None or depth_frame is None:
+            continue
+        
+        rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+        bgr_data = cv2.cvtColor(rgb_data, cv2.COLOR_RGB2BGR)
+        bgr_data = cv2.flip(bgr_data, 1)
+        bgr_data = bgr_data[yw_min:yw_max, xw_min:xw_max]
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        
+        # Crear la máscara de toques
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        
+        # Aplicar filtros
+        touch_mask_filtered = cv2.medianBlur(touch_mask, ksize=3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_OPEN, kernel)
+        touch_mask_filtered = cv2.morphologyEx(touch_mask_filtered, cv2.MORPH_CLOSE, kernel)
+        
+        if frame_count < initialization_delay:
+            # Redibujar la pantalla durante el delay
+            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            for y in range(view_height):
+                ratio = y / view_height
+                r = int(255 * (0.3 + 0.4 * ratio))
+                g = int(200 * (0.5 + 0.3 * ratio))
+                b = int(255 * (0.8 - 0.3 * ratio))
+                temp_screen[y, :] = [b, g, r]
+            draw_logo_func(temp_screen)
+            draw_final_cards(temp_screen, card_positions_final)
+            # Redibujar botón Hablar usando componente
+            hablar_button_bounds_final = draw_circular_button(
+                temp_screen,
+                circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar,
+                "Hablar",
+                bg_color=(0, 200, 0),  # Green
+                border_color=(255, 255, 255),
+                border_thickness=3,
+                text_color=(255, 255, 255),
+                font_scale=1.3,
+                bold=True,
+                shadow=True
+            )
+            draw_close_card_final(temp_screen, elevated=False)
+            final_screen_scaled = scale_to_videobeam(temp_screen)
+            cv2.imshow(window_name, final_screen_scaled)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            continue
+        
+        # Encontrar contornos
+        contours, _ = cv2.findContours(touch_mask_filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Limpiar historial antiguo
+        current_time = time.time()
+        if frame_count % history_cleanup_interval == 0:
+            for key in list(touch_history.keys()):
+                touch_history[key] = [
+                    touch for touch in touch_history[key] 
+                    if current_time - touch[3] < max_history_age
+                ]
+                if not touch_history[key]:
+                    del touch_history[key]
+        
+        # Procesar contornos
+        valid_touches_this_frame = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if min_touch_area <= area <= max_touch_area:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    
+                    # Mapeo de coordenadas
+                    x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                    
+                    # Agregar a historial
+                    touch_key = (x_touch // 25, y_touch // 25)
+                    touch_history[touch_key].append((x_touch, y_touch, area, current_time))
+                    
+                    # Verificar persistencia
+                    if len(touch_history[touch_key]) >= min_touch_frames:
+                        if current_time - last_valid_touch_time > touch_cooldown:
+                            recent_touches = touch_history[touch_key][-min_touch_frames:]
+                            all_recent = all(current_time - touch[3] < 1.0 for touch in recent_touches)
+                            
+                            if all_recent and len(recent_touches) >= min_touch_frames:
+                                areas = [touch[2] for touch in recent_touches]
+                                avg_area = sum(areas) / len(areas)
+                                
+                                if min(areas) > 0:
+                                    area_variance = max(areas) / min(areas)
+                                    if area_variance < 3.5 and min_touch_area <= avg_area <= max_touch_area:
+                                        valid_touches_this_frame.append((x_touch, y_touch, touch_key))
+        
+        # Procesar toques válidos (solo para la X)
+        for x_touch, y_touch, touch_key in valid_touches_this_frame:
+            if touch_key in touch_history:
+                del touch_history[touch_key]
+            last_valid_touch_time = current_time
+            
+            # Verificar si se tocó la X
+            if detectar_close_card_touch_final(x_touch, y_touch):
+                print("Card de cerrar tocada en vista final")
+                # Mostrar efecto de elevación en la X
+                temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                for y in range(view_height):
+                    ratio = y / view_height
+                    r = int(255 * (0.3 + 0.4 * ratio))
+                    g = int(200 * (0.5 + 0.3 * ratio))
+                    b = int(255 * (0.8 - 0.3 * ratio))
+                    temp_screen[y, :] = [b, g, r]
+                draw_logo_func(temp_screen)
+                draw_final_cards(temp_screen, card_positions_final)
+                # Redibujar botón Hablar usando componente
+                hablar_button_bounds_final = draw_circular_button(
+                    temp_screen,
+                    circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar,
+                    "Hablar",
+                    bg_color=(0, 200, 0),  # Green
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.3,
+                    bold=True,
+                    shadow=True
+                )
+                draw_close_card_final(temp_screen, elevated=True)
+                temp_screen_scaled = scale_to_videobeam(temp_screen)
+                cv2.imshow(window_name, temp_screen_scaled)
+                cv2.waitKey(200)
+                # Volver al menú principal (retornar "MENU" para indicar que se debe volver al menú)
+                rgb_stream.stop()
+                depth_stream.stop()
+                return "MENU"
+            # Verificar si se tocó el botón Hablar usando componente helper
+            if hablar_button_bounds_final and is_point_in_circular_button(x_touch, y_touch, hablar_button_bounds_final):
+                print("Botón Hablar tocado en vista final")
+                rgb_stream.stop()
+                depth_stream.stop()
+                ret = _run_historia_voice_flow(
+                    window_name, view_width, view_height, scale_to_videobeam, draw_logo_func,
+                    sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados,
+                    device, coordenadas, dmax_map, dmin_map,
+                    draw_close_card_final, detectar_close_card_touch_final,
+                    close_card_detection_x_final, close_card_detection_y_final,
+                    close_card_detection_w_final, close_card_detection_h_final,
+                    VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT,
+                )
+                # Si retorna "RESTART", reiniciar streams y continuar en el bucle para volver a la vista final
+                if ret == "RESTART":
+                    # Reiniciar streams para poder detectar toques en la vista final
+                    # Los streams anteriores se detuvieron en _run_historia_voice_flow
+                    try:
+                        rgb_stream.stop()
+                        depth_stream.stop()
+                    except:
+                        pass
+                    rgb_stream = device.create_color_stream()
+                    depth_stream = device.create_depth_stream()
+                    rgb_stream.start()
+                    depth_stream.start()
+                    continue
+                return ret if ret is not None else "MENU"
+        
+        # Redibujar la pantalla en cada frame
+        temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            temp_screen[y, :] = [b, g, r]
+        draw_logo_func(temp_screen)
+        draw_final_cards(temp_screen, card_positions_final)
+        # Redibujar botón Hablar usando componente
+        hablar_button_bounds_final = draw_circular_button(
+            temp_screen,
+            circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar,
+            "Hablar",
+            bg_color=(0, 200, 0),  # Green
+            border_color=(255, 255, 255),
+            border_thickness=3,
+            text_color=(255, 255, 255),
+            font_scale=1.3,
+            bold=True,
+            shadow=True
+        )
+        draw_close_card_final(temp_screen, elevated=close_elevated_final)
+        # Redibujar botón Hablar usando componente
+        hablar_button_bounds_final = draw_circular_button(
+            temp_screen,
+            circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar,
+            "Hablar",
+            bg_color=(0, 200, 0),  # Green
+            border_color=(255, 255, 255),
+            border_thickness=3,
+            text_color=(255, 255, 255),
+            font_scale=1.3,
+            bold=True,
+            shadow=True
+        )
+        final_screen_scaled = scale_to_videobeam(temp_screen)
+        cv2.imshow(window_name, final_screen_scaled)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            # Solo cerrar si se presiona 'q' explícitamente
+            rgb_stream.stop()
+            depth_stream.stop()
+            return None
+    
+    # Detener streams y cerrar (esto no debería ejecutarse normalmente)
+    rgb_stream.stop()
+    depth_stream.stop()
+    return None
+
+
+def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_videobeam, draw_logo_func,
+                             sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados,
+                             device, coordenadas, dmax_map, dmin_map,
+                             draw_close_card_final_fn, detectar_close_card_touch_final_fn,
+                             close_card_detection_x_final, close_card_detection_y_final,
+                             close_card_detection_w_final, close_card_detection_h_final,
+                             VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT):
+    """
+    Run listen -> transcribe -> thinking -> Ollama -> result screen. Returns "MENU" when user presses X on result.
+    """
+    def _gradient_screen():
+        screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            screen[y, :] = [b, g, r]
+        return screen
+
+    sv = _get_historia_story_voice()
+    get_required_words = sv.get_required_words
+    listen_and_transcribe = sv.listen_and_transcribe
+    verify_story_ollama = sv.verify_story_ollama
+
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(project_root, "src", "features", "juego-historia", "config", "palabras_imagenes.json")
+    required_words = get_required_words(config_path, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados)
+
+    # 1) Show "Preparando..." first; then "Ahora puedes hablar" only after listening has started
+    font = cv2.FONT_HERSHEY_DUPLEX
+    fs_prep, th_prep = 1.5, 3  # Mismo tamaño y grosor que "Comprobando tu historia"
+    prep_screen = _gradient_screen()
+    draw_logo_func(prep_screen)
+    msg_prep = "Preparando micrófono..."
+    
+    # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+    try:
+        from PIL import Image, ImageDraw
+        from src.core.font_utils import get_ubuntu_font
+        font_ubuntu = get_ubuntu_font(font_scale=fs_prep, bold=True)
+        img_pil = Image.fromarray(cv2.cvtColor(prep_screen, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            bbox = draw.textbbox((0, 0), msg_prep, font=font_ubuntu)
+            text_width_prep = bbox[2] - bbox[0]
+        except AttributeError:
+            bbox = font_ubuntu.getbbox(msg_prep) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+            text_width_prep = bbox[2] - bbox[0]
+    except:
+        text_size_prep, _ = cv2.getTextSize(msg_prep, font, fs_prep, th_prep)
+        text_width_prep = text_size_prep[0]
+    
+    # Centrar texto horizontalmente
+    tx_prep = (view_width - text_width_prep) // 2
+    ty_prep = view_height // 2
+    
+    # Dibujar texto con sombra y más grande
+    _put_text_safe_historia(prep_screen, msg_prep, (tx_prep + 2, ty_prep + 2), font, fs_prep, (0, 0, 0), th_prep + 1, bold=True)
+    _put_text_safe_historia(prep_screen, msg_prep, (tx_prep, ty_prep), font, fs_prep, (255, 255, 255), th_prep, bold=True)
+    cv2.imshow(window_name, scale_to_videobeam(prep_screen))
+    cv2.waitKey(100)
+
+    def _show_ahora_puedes_hablar():
+        esc_screen = _gradient_screen()
+        draw_logo_func(esc_screen)
+        msg = "Ahora puedes hablar"
+        
+        # Usar mismo tamaño y estilo que "Comprobando tu historia"
+        fs_esc, th_esc = 1.5, 3  # Mismo tamaño y grosor que "Comprobando tu historia"
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font_ubuntu = get_ubuntu_font(font_scale=fs_esc, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(esc_screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), msg, font=font_ubuntu)
+                text_width_esc = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox(msg) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                text_width_esc = bbox[2] - bbox[0]
+        except:
+            text_size_esc, _ = cv2.getTextSize(msg, font, fs_esc, th_esc)
+            text_width_esc = text_size_esc[0]
+        
+        # Centrar texto horizontalmente
+        tx = (view_width - text_width_esc) // 2
+        ty = view_height // 2
+        
+        # Dibujar texto con sombra y más grande
+        _put_text_safe_historia(esc_screen, msg, (tx + 2, ty + 2), font, fs_esc, (0, 0, 0), th_esc + 1, bold=True)
+        _put_text_safe_historia(esc_screen, msg, (tx, ty), font, fs_esc, (255, 255, 255), th_esc, bold=True)
+        cv2.imshow(window_name, scale_to_videobeam(esc_screen))
+        cv2.waitKey(1)
+
+    text = listen_and_transcribe(timeout=10, phrase_time_limit=10, on_listening_started=_show_ahora_puedes_hablar)
+    if not text:
+        text = ""
+
+    # 2) Transcription screen with typewriter animation
+    trans_screen = _gradient_screen()
+    draw_logo_func(trans_screen)
+    tit = "Tu historia:"
+    _put_text_safe_historia(trans_screen, tit, (50, 120), font, 0.8, (255, 255, 255), 2)
+    for i in range(1, len(text) + 1):
+        trans_screen = _gradient_screen()
+        draw_logo_func(trans_screen)
+        _put_text_safe_historia(trans_screen, tit, (50, 120), font, 0.8, (255, 255, 255), 2)
+        # Word wrap: draw text[:i] in a box
+        line = text[:i]
+        font_scale = 0.7
+        thickness = 2
+        y_pos = 180
+        max_width = view_width - 100
+        words = line.split()
+        line_cur = ""
+        for w in words:
+            test = line_cur + (" " if line_cur else "") + w
+            (tw, th), _ = cv2.getTextSize(test, font, font_scale, thickness)
+            if tw > max_width and line_cur:
+                _put_text_safe_historia(trans_screen, line_cur, (50, y_pos), font, font_scale, (255, 255, 255), thickness)
+                y_pos += 35
+                line_cur = w
+            else:
+                line_cur = test
+        if line_cur:
+            _put_text_safe_historia(trans_screen, line_cur, (50, y_pos), font, font_scale, (255, 255, 255), thickness)
+        cv2.imshow(window_name, scale_to_videobeam(trans_screen))
+        cv2.waitKey(max(20, 400 // max(len(text), 1)))
+    cv2.waitKey(800)
+
+    # 3) Thinking indicator + Ollama
+    result_holder = [None]
+    done_holder = [False]
+    def _ollama_thread():
+        result_holder[0] = verify_story_ollama(
+                text,
+                subjects=sujetos_seleccionados,
+                actions=acciones_seleccionadas,
+                places=lugares_seleccionados,
+                model="deepseek-r1",
+            )
+        done_holder[0] = True
+    thr = threading.Thread(target=_ollama_thread, daemon=True)
+    thr.start()
+    start_thinking = time.time()
+    while not done_holder[0]:
+        elapsed = int((time.time() - start_thinking) * 1000)
+        dots = "." * ((elapsed // 500) % 4)
+        think_screen = _gradient_screen()
+        draw_logo_func(think_screen)
+        msg_think = "Comprobando tu historia" + dots
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+        font_scale_think = 1.5  # Aumentado de 1.0 a 1.5
+        thickness_think = 3  # Aumentado de 2 a 3
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font_ubuntu = get_ubuntu_font(font_scale=font_scale_think, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(think_screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), msg_think, font=font_ubuntu)
+                text_width_think = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox(msg_think) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                text_width_think = bbox[2] - bbox[0]
+        except:
+            text_size_think, _ = cv2.getTextSize(msg_think, font, font_scale_think, thickness_think)
+            text_width_think = text_size_think[0]
+        
+        # Centrar texto horizontalmente
+        tx_think = (view_width - text_width_think) // 2
+        ty_think = view_height // 2
+        
+        # Dibujar texto con sombra y más grande
+        _put_text_safe_historia(think_screen, msg_think, (tx_think + 2, ty_think + 2), font, font_scale_think, (0, 0, 0), thickness_think + 1, bold=True)
+        _put_text_safe_historia(think_screen, msg_think, (tx_think, ty_think), font, font_scale_think, (255, 255, 255), thickness_think, bold=True)
+        cv2.imshow(window_name, scale_to_videobeam(think_screen))
+        cv2.waitKey(1)  # Cambiar a 1ms para que no se quede pegado
+    result = result_holder[0] or {"correct": False, "tips": ["Revisa tu oración."]}
+
+    # Initialize confetti system if story is correct
+    confetti_system = None
+    if result.get("correct", False):
+        confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+        confetti_system.start(multiple_bursts=True, num_burst_points=3)
+
+    # 4) Result screen: LingoBien + sentence (highlighted) + tips + X
+    lingo_path = os.path.join(project_root, "images", "LingoBien.png")
+    if not os.path.exists(lingo_path):
+        lingo_path = "images/LingoBien.png"
+    lingo_img = cv2.imread(lingo_path, cv2.IMREAD_UNCHANGED) if os.path.exists(lingo_path) else None
+
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+
+    def _draw_result_screen(screen, elevated_close=False):
+        for y in range(view_height):
+            ratio = y / view_height
+            r = int(255 * (0.3 + 0.4 * ratio))
+            g = int(200 * (0.5 + 0.3 * ratio))
+            b = int(255 * (0.8 - 0.3 * ratio))
+            screen[y, :] = [b, g, r]
+        draw_logo_func(screen)
+        # LingoBien
+        if lingo_img is not None:
+            h_img, w_img = lingo_img.shape[:2]
+            max_h = 220
+            scale = max_h / h_img
+            w_new = int(w_img * scale)
+            h_new = int(h_img * scale)
+            resized = cv2.resize(lingo_img, (w_new, h_new), interpolation=cv2.INTER_AREA)
+            lx = (view_width - w_new) // 2
+            ly = 140
+            if len(resized.shape) == 3 and resized.shape[2] == 4:
+                alpha = resized[:, :, 3] / 255.0
+                for c in range(3):
+                    screen[ly:ly + h_new, lx:lx + w_new, c] = (
+                        alpha * resized[:, :, c] + (1 - alpha) * screen[ly:ly + h_new, lx:lx + w_new, c])
+            else:
+                screen[ly:ly + h_new, lx:lx + w_new] = resized[:, :, :3]
+        
+        # Sentence with highlights (word-by-word with line wrap) and underlines for parts
+        display_text = text if text else "No se pudo entender. Intenta de nuevo."
+        y_pos = 400
+        font_scale = 0.65
+        thickness = 2
+        max_width = view_width - 80
+        
+        # Get parts from result
+        parts = result.get("parts", {})
+        subjects_list = parts.get("subjects", [])
+        actions_list = parts.get("actions", [])
+        predicates_list = parts.get("predicates", [])
+        
+        # Create normalized sets for matching
+        def normalize_word(word):
+            """Normalize word by removing punctuation and converting to lowercase"""
+            return re.sub(r"[^\wáéíóúñü]", "", word.lower())
+        
+        def word_matches(word_norm, word_list):
+            """Check if normalized word matches any word in the list (exact or partial match)"""
+            for w in word_list:
+                w_norm = normalize_word(w)
+                if word_norm == w_norm or word_norm.startswith(w_norm) or w_norm.startswith(word_norm):
+                    return True
+            return False
+        
+        # Colors for different parts
+        subject_color = (0, 0, 255)  # Red (BGR)
+        action_color = (0, 255, 0)  # Green (BGR)
+        predicate_color = (255, 0, 0)  # Blue (BGR)
+        
+        # Calculate word positions using utility function
+        word_positions_data = calculate_word_positions(display_text, 40, y_pos, font_scale, max_width, bold=False)
+        
+        required_set = set(required_words)
+        
+        # Function to match phrases (multi-word sequences) and single words in the text
+        def find_phrase_positions(phrase_list, word_positions_data):
+            """Find positions of phrases (which may span multiple words) or single words in the text"""
+            phrase_matches = []
+            for phrase in phrase_list:
+                if not phrase or not phrase.strip():
+                    continue
+                phrase_words = phrase.split()
+                
+                # Handle single word
+                if len(phrase_words) == 1:
+                    phrase_norm = normalize_word(phrase_words[0])
+                    for wp_data in word_positions_data:
+                        word_norm = normalize_word(wp_data['word'])
+                        if word_norm == phrase_norm or word_norm.startswith(phrase_norm) or phrase_norm.startswith(word_norm):
+                            phrase_matches.append({
+                                'x_start': wp_data['x_start'],
+                                'x_end': wp_data['x_end'],
+                                'y': wp_data['y'],
+                                'phrase': phrase
+                            })
+                else:
+                    # Handle multi-word phrase
+                    phrase_norms = [normalize_word(w) for w in phrase_words]
+                    
+                    # Try to find the phrase in consecutive words
+                    for i in range(len(word_positions_data) - len(phrase_words) + 1):
+                        # Check if consecutive words match the phrase
+                        match = True
+                        for j, phrase_word_norm in enumerate(phrase_norms):
+                            word_norm = normalize_word(word_positions_data[i + j]['word'])
+                            if word_norm != phrase_word_norm and not (word_norm.startswith(phrase_word_norm) or phrase_word_norm.startswith(word_norm)):
+                                match = False
+                                break
+                        
+                        if match:
+                            # Found a match - get the span
+                            start_wp = word_positions_data[i]
+                            end_wp = word_positions_data[i + len(phrase_words) - 1]
+                            phrase_matches.append({
+                                'x_start': start_wp['x_start'],
+                                'x_end': end_wp['x_end'],
+                                'y': start_wp['y'],  # Use first word's y position
+                                'phrase': phrase
+                            })
+            return phrase_matches
+        
+        # Find phrase positions for each category
+        subject_phrases = find_phrase_positions(subjects_list, word_positions_data)
+        action_phrases = find_phrase_positions(actions_list, word_positions_data)
+        predicate_phrases = find_phrase_positions(predicates_list, word_positions_data)
+        
+        # Build underline info from phrase matches
+        underline_info = []
+        
+        # Combine all phrase matches with their categories
+        all_phrases = []
+        for sp in subject_phrases:
+            all_phrases.append({**sp, 'is_subject': True, 'is_action': False, 'is_predicate': False})
+        for ap in action_phrases:
+            # Check if this phrase is already in the list (might overlap with subject/predicate)
+            existing = next((p for p in all_phrases if p['x_start'] == ap['x_start'] and p['x_end'] == ap['x_end']), None)
+            if existing:
+                existing['is_action'] = True
+            else:
+                all_phrases.append({**ap, 'is_subject': False, 'is_action': True, 'is_predicate': False})
+        for pp in predicate_phrases:
+            existing = next((p for p in all_phrases if p['x_start'] == pp['x_start'] and p['x_end'] == pp['x_end']), None)
+            if existing:
+                existing['is_predicate'] = True
+            else:
+                all_phrases.append({**pp, 'is_subject': False, 'is_action': False, 'is_predicate': True})
+        
+        underline_info = all_phrases
+        
+        # Draw action highlights FIRST (before text, so text appears on top)
+        for ui in underline_info:
+            if ui['is_action']:
+                x_start = ui['x_start']
+                x_end = ui['x_end']
+                y_text = ui['y']
+                
+                # Calculate text height for highlight
+                try:
+                    from PIL import Image, ImageDraw
+                    from src.core.font_utils import get_ubuntu_font
+                    font_ubuntu = get_ubuntu_font(font_scale=font_scale, bold=False)
+                    img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+                    draw = ImageDraw.Draw(img_pil)
+                    try:
+                        bbox = draw.textbbox((0, 0), "Ag", font=font_ubuntu)
+                        word_height = bbox[3] - bbox[1]
+                    except AttributeError:
+                        bbox = font_ubuntu.getbbox("Ag") if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 20)
+                        word_height = bbox[3] - bbox[1]
+                except:
+                    (_, word_height), baseline = cv2.getTextSize("Ag", font, font_scale, thickness)
+                    word_height = word_height + baseline
+                
+                # Draw highlight rectangle behind the text
+                highlight_y_top = y_text - word_height + 2  # Slight padding
+                highlight_y_bottom = y_text + 2
+                highlight_color = action_color
+                # Draw semi-transparent highlight
+                overlay = screen.copy()
+                cv2.rectangle(overlay, (x_start, highlight_y_top), (x_end, highlight_y_bottom), highlight_color, -1)
+                cv2.addWeighted(overlay, 0.3, screen, 0.7, 0, screen)
+        
+        # Draw text AFTER highlights
+        for wp_data in word_positions_data:
+            word = wp_data['word']
+            norm = normalize_word(word)
+            is_required = norm in required_set or any(norm.startswith(rw) or rw.startswith(norm) for rw in required_set)
+            
+            # Text color (white by default, or cyan if it's a required word)
+            text_color = (0, 255, 255) if is_required else (255, 255, 255)
+            
+            # Draw text at calculated position
+            _put_text_safe_historia(screen, word, (wp_data['x_start'], wp_data['y']), font, font_scale, text_color, thickness)
+        
+        # Draw underlines and highlights - positioned lower below the text
+        # First, we need to get the actual text height to position underlines correctly
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font_ubuntu = get_ubuntu_font(font_scale=font_scale, bold=False)
+            img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), "Ag", font=font_ubuntu)  # Sample text to get height
+                text_height = bbox[3] - bbox[1]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox("Ag") if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 20)
+                text_height = bbox[3] - bbox[1]
+        except:
+            (_, text_height), baseline = cv2.getTextSize("Ag", font, font_scale, thickness)
+            text_height = text_height + baseline
+        
+        underline_offset = 20# Increased distance from text baseline (lower position)
+        underline_thickness = 3
+        
+        # Draw underlines for subjects and predicates (actions are already highlighted)
+        for ui in underline_info:
+            x_start = ui['x_start']
+            x_end = ui['x_end']
+            y_text = ui['y']
+            
+            # Calculate baseline position (y_text is the baseline position from PIL)
+            y_baseline = y_text
+            
+            # Subjects and Predicates: Draw underlines at the same level (no stepping)
+            underline_categories = []
+            if ui['is_subject']:
+                underline_categories.append(('subject', subject_color))
+            if ui['is_predicate']:
+                underline_categories.append(('predicate', predicate_color))
+            
+            # Draw all underlines at the same y position (no stepping)
+            if underline_categories:
+                y_underline = y_baseline + underline_offset
+                for category, color in underline_categories:
+                    cv2.line(screen, (x_start, y_underline), (x_end, y_underline), color, underline_thickness)
+        
+        # Draw legend in bottom right (always show all three categories)
+        legend_x = view_width - 250
+        legend_y = view_height - 120
+        legend_font_scale = 0.5
+        legend_thickness = 2
+        legend_line_height = 25
+        
+        # Legend background (semi-transparent) - always show 3 items
+        legend_bg_height = 3 * legend_line_height + 20
+        legend_bg = np.zeros((legend_bg_height, 240, 3), dtype=np.uint8)
+        legend_bg[:] = (40, 40, 40)  # Dark gray
+        screen[legend_y-10:legend_y-10+legend_bg_height, legend_x-10:legend_x-10+240] = \
+            cv2.addWeighted(screen[legend_y-10:legend_y-10+legend_bg_height, legend_x-10:legend_x-10+240], 0.7, legend_bg, 0.3, 0)
+        
+        legend_y_current = legend_y
+        # Always show all three categories in the legend
+        # Draw subject color line
+        cv2.line(screen, (legend_x, legend_y_current), (legend_x + 30, legend_y_current), subject_color, underline_thickness)
+        _put_text_safe_historia(screen, "Sujeto", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
+        legend_y_current += legend_line_height
+        
+        # Draw action color highlight (rectangle instead of line)
+        highlight_rect_size = 20
+        highlight_y_top = legend_y_current - highlight_rect_size // 2
+        highlight_y_bottom = legend_y_current + highlight_rect_size // 2
+        overlay_legend = screen.copy()
+        cv2.rectangle(overlay_legend, (legend_x, highlight_y_top), (legend_x + 30, highlight_y_bottom), action_color, -1)
+        cv2.addWeighted(overlay_legend, 0.3, screen, 0.7, 0, screen)
+        _put_text_safe_historia(screen, "Verbo", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
+        legend_y_current += legend_line_height
+        
+        # Draw predicate color line
+        cv2.line(screen, (legend_x, legend_y_current), (legend_x + 30, legend_y_current), predicate_color, underline_thickness)
+        _put_text_safe_historia(screen, "Predicado", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
+        # Tips - mostrar como lista numerada con fuente más grande
+        tips = result.get("tips") or []
+        
+        # Calcular posición inicial para tips
+        y_tips = y_pos + 50
+        tips_font_scale = 0.75  # Aumentado de 0.55 a 0.75
+        tips_thickness = 3  # Aumentado de 2 a 3
+        tips_max_width = view_width - 100  # Ancho máximo para el texto de tips
+        
+        # Dibujar el título "Consejos:" con fuente más grande
+        _put_text_safe_historia(screen, "Consejos:", (40, y_tips), font, 0.8, (200, 200, 255), 3, bold=True)
+        
+        # Dibujar tips como lista numerada
+        tips_x = 60  # Indentación para la lista
+        tips_y = y_tips + 35
+        tips_line_height = 35  # Espacio entre líneas (aumentado)
+        
+        for idx, tip in enumerate(tips, 1):
+            # Crear texto con número de lista: "1. [tip text]"
+            tip_text = f"{idx}. {tip}"
+            
+            # Dividir el tip en palabras para word wrapping
+            tip_words = tip_text.split()
+            current_line = ""
+            
+            for word in tip_words:
+                test_line = current_line + (" " if current_line else "") + word
+                # Calcular ancho del texto de prueba
+                try:
+                    from PIL import Image, ImageDraw
+                    from src.core.font_utils import get_ubuntu_font
+                    font_ubuntu = get_ubuntu_font(font_scale=tips_font_scale, bold=False)
+                    img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+                    draw = ImageDraw.Draw(img_pil)
+                    try:
+                        bbox = draw.textbbox((0, 0), test_line, font=font_ubuntu)
+                        test_width = bbox[2] - bbox[0]
+                    except AttributeError:
+                        bbox = font_ubuntu.getbbox(test_line) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                        test_width = bbox[2] - bbox[0]
+                except:
+                    test_size, _ = cv2.getTextSize(test_line, font, tips_font_scale, tips_thickness)
+                    test_width = test_size[0]
+                
+                # Si el texto excede el ancho máximo, dibujar la línea actual y empezar una nueva
+                if test_width > tips_max_width and current_line:
+                    _put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
+                    tips_y += tips_line_height
+                    current_line = word
+                else:
+                    current_line = test_line
+            
+            # Dibujar la última línea del tip si hay contenido
+            if current_line:
+                _put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
+                tips_y += tips_line_height
+        draw_close_card_final_fn(screen, elevated=elevated_close)
+        # Draw confetti if story is correct (will be drawn after this function returns)
+
+    # Mostrar la vista de resultados con tips primero
+    rgb_stream = device.create_color_stream()
+    depth_stream = device.create_depth_stream()
+    rgb_stream.start()
+    depth_stream.start()
+    result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    _draw_result_screen(result_screen, elevated_close=False)
+    # Don't draw confetti here - it will be drawn in the final overlay
+    cv2.imshow(window_name, scale_to_videobeam(result_screen))
+    cv2.waitKey(1)  # Actualizar la ventana inmediatamente para que se muestre rápido
+    
+    # Leer los tips por voz DESPUÉS de mostrar la pantalla de resultados
+    tips = result.get("tips") or []
+    tips_thread = None
+    if tips:
+        tips_text = ". ".join(tips)  # Unir los tips con puntos
+        def _speak_tips():
+            try:
+                engine = pyttsx3.init()
+                engine.setProperty("rate", 150)
+                for v in engine.getProperty("voices"):
+                    if "spanish" in v.name.lower() or "español" in v.name.lower():
+                        engine.setProperty("voice", v.id)
+                        break
+                engine.say(tips_text)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"⚠ Error al reproducir TTS de tips: {e}")
+        
+        # Reproducir tips en un hilo separado (no daemon para poder esperar a que termine)
+        tips_thread = threading.Thread(target=_speak_tips, daemon=False)
+        tips_thread.start()
+    
+    # Esperar a que el TTS termine y luego 2 segundos adicionales antes de mostrar el overlay
+    close_elevated = False
+    frame_count_res = 0
+    touch_history_res = {}
+    from collections import defaultdict
+    touch_history_res = defaultdict(list)
+    
+    # Esperar a que el hilo de TTS termine (si existe)
+    if tips_thread is not None:
+        tips_thread.join()  # Esperar a que termine el TTS
+    
+    # Esperar 2 segundos adicionales después de que termine el TTS
+    tips_display_time = 0
+    tips_display_duration = 2.0  # Mostrar tips por 2 segundos después del TTS
+    
+    while tips_display_time < tips_display_duration:
+        tips_display_time += 0.1
+        time.sleep(0.1)
+        
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        if frame is None or depth_frame is None:
+            # Redibujar la pantalla de resultados
+            result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            _draw_result_screen(result_screen, elevated_close=False)
+            if confetti_system is not None:
+                confetti_system.draw(result_screen)
+            cv2.imshow(window_name, scale_to_videobeam(result_screen))
+            cv2.waitKey(1)
+            continue
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        touch_mask = cv2.medianBlur(touch_mask, 3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if 100 <= area <= 50000:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    x_touch = int(xv_min + cx * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + cy * (yv_max - yv_min) / (yw_max - yw_min))
+                    if detectar_close_card_touch_final_fn(x_touch, y_touch):
+                        rgb_stream.stop()
+                        depth_stream.stop()
+                        return "MENU"
+        
+        # Actualizar confetti si está activo
+        if confetti_system is not None:
+            confetti_system.update()
+        
+        # Redibujar la pantalla de resultados
+        result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        _draw_result_screen(result_screen, elevated_close=False)
+        if confetti_system is not None:
+            confetti_system.draw(result_screen)
+        cv2.imshow(window_name, scale_to_videobeam(result_screen))
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            rgb_stream.stop()
+            depth_stream.stop()
+            return None
+    
+    # Ahora mostrar la nueva vista con overlay claro sobre la vista de resultados
+    is_correct = result.get("correct", False)
+    message_text = "Muy bien" if is_correct else "Vamos inténtalo de nuevo"
+    
+    def _draw_final_screen(base_screen, elevated_salir=False, elevated_reintentar=False):
+        # Usar la vista de resultados como base (ya tiene la historia y consejos)
+        # Trabajar directamente sobre base_screen para que los cambios se reflejen
+        
+        # Agregar overlay oscuro/transparente sobre la vista de resultados
+        # Crear una capa oscura (negro semi-transparente) para que se vea la vista de fondo
+        dark_overlay = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        alpha = 0.4  # 40% de opacidad oscura para que se vea mejor la vista de fondo
+        cv2.addWeighted(base_screen, 1 - alpha, dark_overlay, alpha, 0, base_screen)
+        
+        # Dibujar imagen LingoBien centrada
+        if lingo_img is not None:
+            h_img, w_img = lingo_img.shape[:2]
+            max_h = 220
+            scale = max_h / h_img
+            w_new = int(w_img * scale)
+            h_new = int(h_img * scale)
+            resized = cv2.resize(lingo_img, (w_new, h_new), interpolation=cv2.INTER_AREA)
+            lx = (view_width - w_new) // 2
+            ly = 140
+            if len(resized.shape) == 3 and resized.shape[2] == 4:
+                alpha_img = resized[:, :, 3] / 255.0
+                for c in range(3):
+                    base_screen[ly:ly + h_new, lx:lx + w_new, c] = (
+                        alpha_img * resized[:, :, c] + (1 - alpha_img) * base_screen[ly:ly + h_new, lx:lx + w_new, c])
+            else:
+                base_screen[ly:ly + h_new, lx:lx + w_new] = resized[:, :, :3]
+            
+            # Dibujar texto "Muy bien" o "Vamos inténtalo de nuevo" más grande y centrado abajo de la imagen
+            message_y = ly + h_new + 40  # 40 píxeles abajo de la imagen
+            message_font_scale = 1.5  # Más grande
+            message_thickness = 3
+            message_color = (0, 255, 0) if is_correct else (0, 200, 255)  # Verde si correcto, naranja si no
+            
+            # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+            try:
+                from PIL import Image, ImageDraw
+                from src.core.font_utils import get_ubuntu_font
+                font_ubuntu = get_ubuntu_font(font_scale=message_font_scale, bold=True)
+                img_pil = Image.fromarray(cv2.cvtColor(base_screen, cv2.COLOR_BGR2RGB))
+                draw = ImageDraw.Draw(img_pil)
+                try:
+                    bbox = draw.textbbox((0, 0), message_text, font=font_ubuntu)
+                    message_width = bbox[2] - bbox[0]
+                except AttributeError:
+                    bbox = font_ubuntu.getbbox(message_text) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                    message_width = bbox[2] - bbox[0]
+            except:
+                message_size, _ = cv2.getTextSize(message_text, font, message_font_scale, message_thickness)
+                message_width = message_size[0]
+            
+            # Centrar texto horizontalmente
+            message_x = (view_width - message_width) // 2
+            
+            # Dibujar texto con sombra
+            _put_text_safe_historia(base_screen, message_text, (message_x + 2, message_y + 2), 
+                                   font, message_font_scale, (0, 0, 0), message_thickness + 1, bold=True)
+            _put_text_safe_historia(base_screen, message_text, (message_x, message_y), 
+                                   font, message_font_scale, message_color, message_thickness, bold=True)
+        
+        # Dibujar botones rectangulares: "Salir" y "Volver a intentarlo"
+        button_width_salir = 200
+        button_width_reintentar = 280  # Más ancho para "Volver a intentarlo"
+        button_height = 60
+        button_spacing = 50
+        button_y = view_height - 90 - button_height  # Misma posición que botones "Siguiente" y "Jugar"
+        button_center_x = view_width // 2
+        
+        # Botón "Salir" (izquierda) - rojo
+        button_salir_x = button_center_x - button_width_salir - button_spacing // 2
+        button_salir_bounds = draw_rectangular_button(
+            base_screen,
+            button_salir_x, button_y, button_width_salir, button_height,
+            "Salir",
+            bg_color=(0, 0, 200),  # Rojo
+            border_color=(255, 255, 255),
+            border_thickness=3,
+            text_color=(255, 255, 255),
+            font_scale=1.0,  # Tamaño reducido
+            bold=True,
+            shadow=True
+        )
+        
+        # Botón "Volver a intentarlo" o "Volver a jugar" (derecha) - verde
+        button_reintentar_x = button_center_x + button_spacing // 2
+        # Cambiar el texto del botón según si la historia es correcta o no
+        button_text_reintentar = "Volver a jugar" if is_correct else "Volver a intentarlo"
+        button_reintentar_bounds = draw_rectangular_button(
+            base_screen,
+            button_reintentar_x, button_y, button_width_reintentar, button_height,
+            button_text_reintentar,
+            bg_color=(100, 255, 100),  # Verde
+            border_color=(255, 255, 255),
+            border_thickness=3,
+            text_color=(255, 255, 255),
+            font_scale=1.0,  # Tamaño reducido
+            bold=True,
+            shadow=True
+        )
+        
+        return button_salir_bounds, button_reintentar_bounds
+    
+    # Mostrar la nueva vista final usando la vista de resultados como base
+    # Crear la vista de resultados final (con historia y consejos)
+    result_screen_final = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    _draw_result_screen(result_screen_final, elevated_close=False)
+    # Don't draw confetti here - it will be drawn in the final overlay
+    
+    # Ahora agregar el overlay oscuro con imagen Lingo, texto y botones
+    button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_final, elevated_salir=False, elevated_reintentar=False)
+    
+    # Draw confetti in the final overlay if active
+    if confetti_system is not None:
+        confetti_system.draw(result_screen_final)
+    
+    cv2.imshow(window_name, scale_to_videobeam(result_screen_final))
+    
+    salir_elevated = False
+    reintentar_elevated = False
+    frame_count_final = 0
+    touch_history_final = defaultdict(list)
+    
+    while True:
+        frame_count_final += 1
+        frame = rgb_stream.read_frame()
+        depth_frame = depth_stream.read_frame()
+        if frame is None or depth_frame is None:
+            # Recrear la vista de resultados como base
+            result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+            _draw_result_screen(result_screen_base, elevated_close=False)
+            if confetti_system is not None:
+                confetti_system.update()
+            button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
+            # Draw confetti in the final overlay
+            if confetti_system is not None:
+                confetti_system.draw(result_screen_base)
+            cv2.imshow(window_name, scale_to_videobeam(result_screen_base))
+            cv2.waitKey(1)
+            continue
+        
+        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+        depth_data = cv2.flip(depth_data, 1)
+        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
+        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+        touch_mask = cv2.medianBlur(touch_mask, 3)
+        kernel = np.ones((2, 2), np.uint8)
+        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Procesar toques
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if 100 <= area <= 50000:
+                M = cv2.moments(contour)
+                if M['m00'] != 0:
+                    cx = int(M['m10'] / M['m00'])
+                    cy = int(M['m01'] / M['m00'])
+                    x_touch = int(xv_min + cx * (xv_max - xv_min) / (xw_max - xw_min))
+                    y_touch = int(yv_min + cy * (yv_max - yv_min) / (yw_max - yw_min))
+                    
+                    # Verificar si se tocó el botón "Salir"
+                    if button_salir_bounds and is_point_in_rectangular_button(x_touch, y_touch, button_salir_bounds):
+                        print("Botón 'Salir' presionado - Volviendo al menú principal")
+                        rgb_stream.stop()
+                        depth_stream.stop()
+                        return "MENU"
+                    
+                    # Verificar si se tocó el botón "Volver a intentarlo" o "Volver a jugar"
+                    if button_reintentar_bounds and is_point_in_rectangular_button(x_touch, y_touch, button_reintentar_bounds):
+                        button_text = "Volver a jugar" if is_correct else "Volver a intentarlo"
+                        print(f"Botón '{button_text}' presionado")
+                        rgb_stream.stop()
+                        depth_stream.stop()
+                        # Si la historia es correcta, volver a la primera selección del juego
+                        # Si no es correcta, volver a la vista final (donde está el botón Hablar)
+                        if is_correct:
+                            return "RESTART_FULL"  # Volver al inicio del juego
+                        else:
+                            return "RESTART"  # Volver a la vista final
+        
+        # Redibujar la pantalla usando la vista de resultados como base
+        result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+        _draw_result_screen(result_screen_base, elevated_close=False)
+        # Actualizar confetti si está activo
+        if confetti_system is not None:
+            confetti_system.update()
+        button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
+        # Draw confetti in the final overlay (after drawing the overlay)
+        if confetti_system is not None:
+            confetti_system.draw(result_screen_base)
+        cv2.imshow(window_name, scale_to_videobeam(result_screen_base))
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            rgb_stream.stop()
+            depth_stream.stop()
+            return None
+    return "MENU"
+
 def mostrar_menu_juegos(device):
     # Inicializar Pygame para reproducir sonidos (opcional)
     pygame.init()
@@ -2818,7 +7281,7 @@ def mostrar_menu_juegos(device):
             logo_width = int(logo_height * aspect_ratio)
             logo_resized = cv2.resize(logo_image_local, (logo_width, logo_height), interpolation=cv2.INTER_AREA)
             logo_x = (view_width - logo_width) // 2
-            logo_y = 30
+            logo_y = 20  # Subido un poco más (de 30 a 20)
             
             if logo_x >= 0 and logo_y >= 0 and logo_x + logo_width <= view_width and logo_y + logo_height <= view_height:
                 if len(logo_resized.shape) == 3 and logo_resized.shape[2] == 4:
@@ -2842,10 +7305,10 @@ def mostrar_menu_juegos(device):
             text_size, _ = cv2.getTextSize(logo_text, font, font_scale, thickness)
             text_x = (view_width - text_size[0]) // 2
             text_y = 80
-            cv2.putText(screen, logo_text, (text_x + 3, text_y + 3), 
-                       font, font_scale, (0, 0, 0), thickness + 2)
-            cv2.putText(screen, logo_text, (text_x, text_y), 
-                       font, font_scale, (0, 255, 255), thickness)
+            put_text_ubuntu(screen, logo_text, (text_x + 3, text_y + 3), 
+                       font_scale, (0, 0, 0), thickness + 2)
+            put_text_ubuntu(screen, logo_text, (text_x, text_y), 
+                       font_scale, (0, 255, 255), thickness)
             return False
     
     # Crear fondo colorido con degradado para niños
@@ -3137,7 +7600,7 @@ def mostrar_menu_juegos(device):
                 icon_size, _ = cv2.getTextSize(icono, font_icon, font_scale_icon, thickness_icon)
                 icon_x = x_scaled + (w_scaled - icon_size[0]) // 2
                 icon_y = y_scaled + int(100 * scale_factor) + icon_y_offset
-                cv2.putText(screen, icono, (icon_x, icon_y), font_icon, font_scale_icon, (255, 255, 255), thickness_icon)
+                put_text_ubuntu(screen, icono, (icon_x, icon_y), font_scale_icon, (255, 255, 255), thickness_icon)
             
             # Dibujar nombre del juego (nombre es la clave del diccionario)
             # Ajustar el texto para que quepa dentro de la card
@@ -3181,21 +7644,21 @@ def mostrar_menu_juegos(device):
                     linea_x = x_scaled + (w_scaled - linea_size[0]) // 2
                     linea_y = start_y + i * line_height
                     # Sombra del texto
-                    cv2.putText(screen, linea, (linea_x + 2, linea_y + 2), 
-                               font_nombre, font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
+                    put_text_ubuntu(screen, linea, (linea_x + 2, linea_y + 2), 
+                               font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
                     # Texto principal
-                    cv2.putText(screen, linea, (linea_x, linea_y), 
-                               font_nombre, font_scale_nombre, (255, 255, 255), thickness_nombre)
+                    put_text_ubuntu(screen, linea, (linea_x, linea_y), 
+                               font_scale_nombre, (255, 255, 255), thickness_nombre)
             else:
                 # El texto cabe en una línea, dibujarlo normalmente
                 nombre_x = x_scaled + (w_scaled - nombre_size[0]) // 2
                 nombre_y = y_scaled + int(180 * scale_factor) + icon_y_offset
                 # Sombra del texto
-                cv2.putText(screen, nombre_texto, (nombre_x + 2, nombre_y + 2), 
-                           font_nombre, font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
+                put_text_ubuntu(screen, nombre_texto, (nombre_x + 2, nombre_y + 2), 
+                           font_scale_nombre, (0, 0, 0), thickness_nombre + 1)
                 # Texto principal
-                cv2.putText(screen, nombre_texto, (nombre_x, nombre_y), 
-                           font_nombre, font_scale_nombre, (255, 255, 255), thickness_nombre)
+                put_text_ubuntu(screen, nombre_texto, (nombre_x, nombre_y), 
+                           font_scale_nombre, (255, 255, 255), thickness_nombre)
             
             # Dibujar descripción (ajustar si es muy larga)
             desc_texto = pos['descripcion']
@@ -3214,8 +7677,8 @@ def mostrar_menu_juegos(device):
             
             desc_x = x_scaled + (w_scaled - desc_size[0]) // 2
             desc_y = y_scaled + int(220 * scale_factor) + icon_y_offset
-            cv2.putText(screen, desc_texto, (desc_x, desc_y), 
-                       font_desc, font_scale_desc, (255, 255, 255), thickness_desc)
+            put_text_ubuntu(screen, desc_texto, (desc_x, desc_y), 
+                       font_scale_desc, (255, 255, 255), thickness_desc)
     
     # 5. Crear y configurar la ventana ANTES de dibujar (igual que calibrate_area.py)
     # Crear una ventana para la proyección
@@ -3266,11 +7729,11 @@ def mostrar_menu_juegos(device):
         text_y = view_height // 2 - 50
         
         # Sombra del texto
-        cv2.putText(mensaje_screen, texto_principal, (text_x + 3, text_y + 3), 
-                   font, font_scale, (0, 0, 0), thickness + 2)
+        put_text_ubuntu(mensaje_screen, texto_principal, (text_x + 3, text_y + 3), 
+                   font_scale, (0, 0, 0), thickness + 2)
         # Texto principal
-        cv2.putText(mensaje_screen, texto_principal, (text_x, text_y), 
-                   font, font_scale, (0, 255, 255), thickness)
+        put_text_ubuntu(mensaje_screen, texto_principal, (text_x, text_y), 
+                   font_scale, (0, 255, 255), thickness)
         
         # Mensaje secundario
         texto_secundario = "Este juego estará disponible pronto"
@@ -3281,8 +7744,8 @@ def mostrar_menu_juegos(device):
         text_x_sec = (view_width - text_size_sec[0]) // 2
         text_y_sec = view_height // 2 + 50
         
-        cv2.putText(mensaje_screen, texto_secundario, (text_x_sec, text_y_sec), 
-                   font_sec, font_scale_sec, (255, 255, 255), thickness_sec)
+        put_text_ubuntu(mensaje_screen, texto_secundario, (text_x_sec, text_y_sec), 
+                   font_scale_sec, (255, 255, 255), thickness_sec)
         
         # Escalar a la resolución del videobeam antes de mostrar
         mensaje_screen_scaled = scale_to_videobeam(mensaje_screen)
@@ -3315,6 +7778,8 @@ def mostrar_menu_juegos(device):
         history_cleanup_interval = 30  # Limpiar historial cada 30 frames
         max_history_age = 1.0  # Eliminar entradas del historial más antiguas de 1 segundo
         inactivity_threshold = 5.0  # Si no hay toques válidos en 5 segundos, ser más estricto
+        touch_feedback_points = []  # Lista (x, y, timestamp) para feedback visual sutil de toques
+        touch_feedback_duration = 0.4  # Segundos que se muestra el feedback de cada toque
 
         # 9. Bucle principal de detección de toques
         while True:
@@ -3442,6 +7907,8 @@ def mostrar_menu_juegos(device):
                 if touch_key in touch_history:
                     del touch_history[touch_key]
                 last_valid_touch_time = current_time
+                # Añadir a la lista de feedback visual (posición + tiempo)
+                touch_feedback_points.append((x_touch, y_touch, current_time))
 
                 # Primero verificar si se tocó la card de bocina
                 if detectar_close_card_touch_main(x_touch, y_touch):
@@ -3603,6 +8070,73 @@ def mostrar_menu_juegos(device):
                             frame_count = 0
                             juego_seleccionado_flag = True  # Establecer flag para salir del bucle de detección
                             break  # Salir del bucle de detección de toques para mostrar el menú principal
+                        # Si es Historias, mostrar selección de historias
+                        elif juego_seleccionado == "Historias":
+                            # Mostrar la vista de selección de historias (sujetos)
+                            resultado_seleccion = mostrar_seleccion_historias(
+                                device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                existing_window_name="Menú de Juegos"
+                            )
+                            if resultado_seleccion:
+                                if isinstance(resultado_seleccion, dict):
+                                    # Si retornó un diccionario, puede contener sujetos, acciones y lugares
+                                    sujetos_seleccionados = resultado_seleccion.get('sujetos', [])
+                                    acciones_seleccionadas = resultado_seleccion.get('acciones', [])
+                                    lugares_seleccionados = resultado_seleccion.get('lugares', [])
+                                    print(f"Sujetos seleccionados: {sujetos_seleccionados}")
+                                    print(f"Acciones seleccionadas: {acciones_seleccionadas}")
+                                    print(f"Lugares seleccionados: {lugares_seleccionados}")
+                                    # Aquí puedes agregar la lógica para iniciar el juego de historia
+                                    # Por ejemplo: juego_historia(device, sujetos=sujetos_seleccionados, acciones=acciones_seleccionadas, lugares=lugares_seleccionados, ...)
+                                elif isinstance(resultado_seleccion, list):
+                                    # Si retornó una lista, solo se seleccionaron sujetos (caso antiguo, por compatibilidad)
+                                    print(f"Sujetos seleccionados: {resultado_seleccion}")
+                                    # Aquí puedes agregar la lógica para iniciar el juego de historia
+                                    # Por ejemplo: juego_historia(device, sujetos=resultado_seleccion, ...)
+                            
+                            # Volver al menú principal después de seleccionar historia o cancelar
+                            # Recrear el menú
+                            videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                            for y in range(view_height):
+                                ratio = y / view_height
+                                r = int(255 * (0.3 + 0.4 * ratio))
+                                g = int(200 * (0.5 + 0.3 * ratio))
+                                b = int(255 * (0.8 - 0.3 * ratio))
+                                videobeam_screen[y, :] = [b, g, r]
+                            draw_logo(videobeam_screen)
+                            draw_game_cards(videobeam_screen, game_positions)
+                            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            
+                            # Verificar si la ventana existe antes de recrearla
+                            try:
+                                prop = cv2.getWindowProperty("Menú de Juegos", cv2.WND_PROP_VISIBLE)
+                                if prop < 0:
+                                    # La ventana no existe, crearla
+                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.waitKey(50)
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                                else:
+                                    # La ventana existe, solo asegurar que esté en pantalla completa
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            except:
+                                # Si hay error, crear la ventana
+                                cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.waitKey(50)
+                                cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+                            cv2.waitKey(50)
+                            cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            # Reiniciar el contador de frames para evitar detecciones inmediatas
+                            frame_count = 0
+                            juego_seleccionado_flag = True
+                            break
                         else:
                             mostrar_mensaje_juego(juego_seleccionado)
                             
@@ -3627,12 +8161,23 @@ def mostrar_menu_juegos(device):
                             break
 
             # Asegurar que la card de bocina esté dibujada en cada frame
-            # Actualizar el estado de la bocina desde la variable global (por si cambió en otra vista)
             bocina_muted = niveles_clasificacion._bocina_muted_global
-            
-            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+
+            # Copia para dibujar el feedback sutil de toques sin modificar el menú base
+            display_screen = videobeam_screen.copy()
+            # Mantener solo toques recientes y dibujar un círculo sutil en cada uno
+            touch_feedback_points[:] = [(x, y, t) for (x, y, t) in touch_feedback_points if current_time - t < touch_feedback_duration]
+            for (x, y, ts) in touch_feedback_points:
+                age = current_time - ts
+                alpha = 1.0 - (age / touch_feedback_duration)  # Fade out
+                radius = int(8 + 6 * (1 - age / touch_feedback_duration))  # 14 -> 8 px
+                color = (int(200 + 55 * alpha), int(220 + 35 * alpha), 255)  # Azul claro suave
+                cv2.circle(display_screen, (int(x), int(y)), radius, color, 2)
+                cv2.circle(display_screen, (int(x), int(y)), max(2, radius - 4), color, -1)
+
+            draw_close_card_main(display_screen, elevated=False, muted=bocina_muted)
             # Escalar a la resolución del videobeam antes de mostrar
-            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+            videobeam_screen_scaled = scale_to_videobeam(display_screen)
             # Mostrar la ventana
             cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
             # Forzar pantalla completa en cada frame
@@ -3744,14 +8289,14 @@ def mostrar_menu_juegos(device):
             tamaño_texto, _ = cv2.getTextSize(encabezado_modo, fuente_encabezado, escala_fuente_encabezado, grosor_encabezado)
             x_text_modo = x_start + (button_width - tamaño_texto[0]) // 2
             y_text_modo = initial_y - 20  # Ajustar para que quede encima
-            cv2.putText(screen, encabezado_modo, (x_text_modo, y_text_modo), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
+            put_text_ubuntu(screen, encabezado_modo, (x_text_modo, y_text_modo), escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
             # Encabezado de la columna de tipo
             encabezado_tipo = "Tipo de Piezas"
             tamaño_texto, _ = cv2.getTextSize(encabezado_tipo, fuente_encabezado, escala_fuente_encabezado, grosor_encabezado)
             x_text_tipo = x_start + button_width + spacing_x + (button_width - tamaño_texto[0]) // 2
             y_text_tipo = initial_y - 20  # Ajustar para que quede encima
-            cv2.putText(screen, encabezado_tipo, (x_text_tipo, y_text_tipo), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
+            put_text_ubuntu(screen, encabezado_tipo, (x_text_tipo, y_text_tipo), escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
             # Dibujar los botones de modo y tipo
             for opcion, (x, y) in positions.items():
@@ -3766,7 +8311,7 @@ def mostrar_menu_juegos(device):
                 tamaño_texto, _ = cv2.getTextSize(texto, fuente, escala_fuente, grosor_texto)
                 text_x = x + (button_width - tamaño_texto[0]) // 2
                 text_y = y + (button_height + tamaño_texto[1]) // 2
-                cv2.putText(screen, texto, (text_x, text_y), fuente, escala_fuente, color_texto, grosor_texto)
+                put_text_ubuntu(screen, texto, (text_x, text_y), escala_fuente, color_texto, grosor_texto)
 
             # Si se ha seleccionado "Virtuales", mostramos la selección del número de fichas
             if mostrar_num_piezas:
@@ -3806,19 +8351,17 @@ def mostrar_menu_juegos(device):
                 tamaño_texto, _ = cv2.getTextSize(titulo_piezas, fuente_encabezado, escala_fuente_encabezado, grosor_encabezado)
                 x_text_piezas = num_piezas_area['x'] + (num_piezas_area['width'] - tamaño_texto[0]) // 2
                 y_text_piezas = num_piezas_area['y'] - 20  # Ajustar para que quede encima
-                cv2.putText(screen, titulo_piezas, (x_text_piezas, y_text_piezas), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
+                put_text_ubuntu(screen, titulo_piezas, (x_text_piezas, y_text_piezas), escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
                 # Dibujar botón de disminuir
                 cv2.rectangle(screen, (decrease_button['x1'], decrease_button['y1']),
                             (decrease_button['x2'], decrease_button['y2']), (255, 255, 255), 2)
-                cv2.putText(screen, "-", (decrease_button['x1'] + 25, decrease_button['y1'] + 55),
-                            cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+                put_text_ubuntu(screen, "-", (decrease_button['x1'] + 25, decrease_button['y1'] + 55), 2.0, (255, 255, 255), 2)
 
                 # Dibujar botón de aumentar
                 cv2.rectangle(screen, (increase_button['x1'], increase_button['y1']),
                             (increase_button['x2'], increase_button['y2']), (255, 255, 255), 2)
-                cv2.putText(screen, "+", (increase_button['x1'] + 20, increase_button['y1'] + 55),
-                            cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+                put_text_ubuntu(screen, "+", (increase_button['x1'] + 20, increase_button['y1'] + 55), 2.0, (255, 255, 255), 2)
 
                 # Dibujar área de visualización del número de piezas
                 cv2.rectangle(screen, (num_display_area['x'], num_display_area['y']),
@@ -3828,7 +8371,7 @@ def mostrar_menu_juegos(device):
                 tamaño_texto, _ = cv2.getTextSize(texto_num, fuente_encabezado, escala_fuente_encabezado, grosor_encabezado)
                 text_x = num_display_area['x'] + (num_display_area['width'] - tamaño_texto[0]) // 2
                 text_y = num_display_area['y'] + (num_display_area['height'] + tamaño_texto[1]) // 2
-                cv2.putText(screen, texto_num, (text_x, text_y), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
+                put_text_ubuntu(screen, texto_num, (text_x, text_y), escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
                 # Agregar las áreas de los botones de aumentar y disminuir al diccionario de áreas
                 areas_opciones["decrease"] = decrease_button
@@ -3893,21 +8436,18 @@ def mostrar_menu_juegos(device):
             depth_data = cv2.flip(depth_data, 1)
             depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
 
-            # Crear la máscara que considera solo los valores entre dmin y dmax
+            # Crear la máscara (filtros más estrictos para reducir toques fantasma)
             touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-
-            # Operaciones morfológicas
+            touch_mask = cv2.medianBlur(touch_mask, ksize=5)
             kernel = np.ones((3, 3), np.uint8)
             touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+            touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_CLOSE, kernel)
 
-            # Encontrar los contornos de los toques
             contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            # Reiniciar las banderas al inicio de cada iteración
             increase_button_still_pressed = False
             decrease_button_still_pressed = False
 
-            # Procesar cada contorno
             for contour in contours:
                 area = cv2.contourArea(contour)
                 if area > 50:  # Ajusta el umbral según sea necesario
@@ -3927,6 +8467,7 @@ def mostrar_menu_juegos(device):
                             # Determinar si es modo o tipo
                             if opcion_seleccionada in opciones_modo and modo_seleccionado is None:
                                 modo_seleccionado = opcion_seleccionada
+                                _historia_tts_speak(opcion_seleccionada)
                                 # Marcar visualmente la selección
                                 cv2.rectangle(opciones_screen,
                                             (areas_opciones[modo_seleccionado]['x1'], areas_opciones[modo_seleccionado]['y1']),
@@ -3935,6 +8476,7 @@ def mostrar_menu_juegos(device):
                                 cv2.imshow("Opciones de Clasificación", opciones_screen)
                             elif opcion_seleccionada in opciones_tipo and tipo_seleccionado is None:
                                 tipo_seleccionado = opcion_seleccionada
+                                _historia_tts_speak(opcion_seleccionada)
                                 # Marcar visualmente la selección
                                 cv2.rectangle(opciones_screen,
                                             (areas_opciones[tipo_seleccionado]['x1'], areas_opciones[tipo_seleccionado]['y1']),

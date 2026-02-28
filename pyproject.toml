@@ -29,4 +29,5 @@ dependencies = [
     "torchvision",
     "tqdm",
     "ultralytics",
+    "ollama>=0.6.1",
 ]

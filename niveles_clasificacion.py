@@ -7,6 +7,14 @@ import json
 from openni import openni2
 from detection_logic import ObjectDetector, draw_shine_effect
 import pyttsx3
+import sys
+
+# Add project root to path for components
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from src.components.rectangular_button import draw_rectangular_button, is_point_in_rectangular_button
 
 # Variable global para mantener el estado del audio entre vistas
 _bocina_muted_global = False
@@ -1713,7 +1721,34 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                                 # Desmarcar todos los escenarios seleccionados y volver a la vista de niveles
                                                 selected_cards = []
                                                 nivel_seleccionado_flag = False
-                                                print("Volviendo a la vista de niveles")
+                                                print("Volviendo a la vista de niveles - Escenarios desmarcados")
+                                                
+                                                # Redibujar completamente la pantalla de selección de escenarios sin selecciones
+                                                # Limpiar completamente la pantalla primero
+                                                cards_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                                                
+                                                # Redibujar fondo
+                                                for y in range(view_height):
+                                                    ratio = y / view_height
+                                                    r = int(255 * (0.3 + 0.4 * ratio))
+                                                    g = int(200 * (0.5 + 0.3 * ratio))
+                                                    b = int(255 * (0.8 - 0.3 * ratio))
+                                                    cards_screen[y, :] = [b, g, r]
+                                                
+                                                # Redibujar todos los elementos
+                                                draw_logo_func(cards_screen)
+                                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+                                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                                draw_cards(cards_screen, card_positions, selected_cards)  # Dibujar sin selecciones (lista vacía)
+                                                draw_close_card(cards_screen)
+                                                draw_back_card(cards_screen)
+                                                draw_bocina_card(cards_screen, muted=bocina_muted)
+                                                cards_screen_scaled = scale_to_videobeam(cards_screen)
+                                                cv2.imshow(window_name, cards_screen_scaled)
+                                                cv2.waitKey(50)  # Pequeña pausa para asegurar que se actualice la pantalla
+                                                
                                                 # Continuar el bucle para mostrar la vista de niveles nuevamente
                                                 continue
                                             # Si se presionó la card de cerrar (flecha), retornar None para volver a la vista anterior
@@ -2621,31 +2656,35 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 y1_img = center_y - img_h // 2
                                 y2_img = y1_img + img_h
                                 
-                                button_height = 80
+                                button_height = 60
                                 button_width = 200
                                 button_spacing = 50
                                 button_y = y1_img - button_height - 40  # 40 píxeles arriba de la imagen
                                 
-                                button_volver_x1 = center_x - button_width - button_spacing // 2
-                                button_volver_y1 = button_y
-                                button_volver_x2 = button_volver_x1 + button_width
-                                button_volver_y2 = button_volver_y1 + button_height
+                                button_volver_x = center_x - button_width - button_spacing // 2
+                                button_volver_bounds = {
+                                    'x1': button_volver_x,
+                                    'y1': button_y,
+                                    'x2': button_volver_x + button_width,
+                                    'y2': button_y + button_height
+                                }
                                 
-                                button_salir_x1 = center_x + button_spacing // 2
-                                button_salir_y1 = button_y
-                                button_salir_x2 = button_salir_x1 + button_width
-                                button_salir_y2 = button_salir_y1 + button_height
+                                button_salir_x = center_x + button_spacing // 2
+                                button_salir_bounds = {
+                                    'x1': button_salir_x,
+                                    'y1': button_y,
+                                    'x2': button_salir_x + button_width,
+                                    'y2': button_y + button_height
+                                }
                                 
                                 # Verificar si se tocó el botón "Volver a jugar"
-                                if (button_volver_x1 <= x_touch <= button_volver_x2 and 
-                                    button_volver_y1 <= y_touch <= button_volver_y2):
+                                if is_point_in_rectangular_button(x_touch, y_touch, button_volver_bounds):
                                     print("Botón 'Volver a jugar' presionado - Volviendo a vista de niveles")
                                     # Retornar "RESTART" para volver a la vista de niveles
                                     return "RESTART"
                                 
                                 # Verificar si se tocó el botón "Salir"
-                                elif (button_salir_x1 <= x_touch <= button_salir_x2 and 
-                                      button_salir_y1 <= y_touch <= button_salir_y2):
+                                elif is_point_in_rectangular_button(x_touch, y_touch, button_salir_bounds):
                                     print("Botón 'Salir' presionado - Volviendo al menú principal")
                                     # Retornar "MAIN_MENU" para volver al menú principal
                                     return "MAIN_MENU"
@@ -3383,54 +3422,41 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                     # Si no tiene alpha, copiar directamente
                     overlay[y1:y2, x1:x2] = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
                 
-                # Dibujar botones arriba de la imagen
-                button_height = 80
+                # Dibujar botones arriba de la imagen usando el componente rectangular_button
+                button_height = 60
                 button_width = 200
                 button_spacing = 50
                 button_y = y1 - button_height - 40  # 40 píxeles arriba de la imagen
                 
-                # Botón "Volver a jugar" (izquierda)
-                button_volver_x1 = center_x - button_width - button_spacing // 2
-                button_volver_y1 = button_y
-                button_volver_x2 = button_volver_x1 + button_width
-                button_volver_y2 = button_volver_y1 + button_height
+                # Botón "Volver a jugar" (izquierda) - verde como en juego de historia
+                button_volver_x = center_x - button_width - button_spacing // 2
+                button_volver_bounds = draw_rectangular_button(
+                    overlay,
+                    button_volver_x, button_y, button_width, button_height,
+                    "Volver a jugar",
+                    bg_color=(100, 255, 100),  # Verde
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.5,  # Mismo tamaño que en juego de historia
+                    bold=True,
+                    shadow=True
+                )
                 
-                # Botón "Salir" (derecha)
-                button_salir_x1 = center_x + button_spacing // 2
-                button_salir_y1 = button_y
-                button_salir_x2 = button_salir_x1 + button_width
-                button_salir_y2 = button_salir_y1 + button_height
-                
-                # Dibujar botón "Volver a jugar" (verde)
-                cv2.rectangle(overlay, (button_volver_x1, button_volver_y1), 
-                             (button_volver_x2, button_volver_y2), (0, 200, 0), -1)
-                cv2.rectangle(overlay, (button_volver_x1, button_volver_y1), 
-                             (button_volver_x2, button_volver_y2), (255, 255, 255), 3)
-                
-                # Texto "Volver a jugar"
-                texto_volver = "Volver a jugar"
-                font = cv2.FONT_HERSHEY_DUPLEX
-                font_scale = 0.7
-                thickness = 2
-                (text_width, text_height), baseline = cv2.getTextSize(texto_volver, font, font_scale, thickness)
-                text_x_volver = button_volver_x1 + (button_width - text_width) // 2
-                text_y_volver = button_volver_y1 + (button_height + text_height) // 2
-                cv2.putText(overlay, texto_volver, (text_x_volver, text_y_volver), 
-                           font, font_scale, (255, 255, 255), thickness)
-                
-                # Dibujar botón "Salir" (rojo)
-                cv2.rectangle(overlay, (button_salir_x1, button_salir_y1), 
-                             (button_salir_x2, button_salir_y2), (0, 0, 200), -1)
-                cv2.rectangle(overlay, (button_salir_x1, button_salir_y1), 
-                             (button_salir_x2, button_salir_y2), (255, 255, 255), 3)
-                
-                # Texto "Salir"
-                texto_salir = "Salir"
-                (text_width, text_height), baseline = cv2.getTextSize(texto_salir, font, font_scale, thickness)
-                text_x_salir = button_salir_x1 + (button_width - text_width) // 2
-                text_y_salir = button_salir_y1 + (button_height + text_height) // 2
-                cv2.putText(overlay, texto_salir, (text_x_salir, text_y_salir), 
-                           font, font_scale, (255, 255, 255), thickness)
+                # Botón "Salir" (derecha) - rojo
+                button_salir_x = center_x + button_spacing // 2
+                button_salir_bounds = draw_rectangular_button(
+                    overlay,
+                    button_salir_x, button_y, button_width, button_height,
+                    "Salir",
+                    bg_color=(0, 0, 200),  # Rojo
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.5,  # Mismo tamaño que en juego de historia
+                    bold=True,
+                    shadow=True
+                )
                 
                 rectangulos_screen = overlay
             

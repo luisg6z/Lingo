@@ -343,7 +343,14 @@ def calibrar_mesa_y_detectar_toques(device):
         app.title('Verificación de Detección')
         app.geometry("400x200")
         
-        label = ctk.CTkLabel(app, text='¿Desea proceder con la detección de toques?', font=("Arial", 16))
+        # Try to use Ubuntu font, fallback to system default
+        try:
+            from src.core.font_utils import get_ubuntu_font_path_for_customtkinter
+            ubuntu_font = get_ubuntu_font_path_for_customtkinter()
+            font_family = ubuntu_font if ubuntu_font else "Arial"
+        except:
+            font_family = "Arial"
+        label = ctk.CTkLabel(app, text='¿Desea proceder con la detección de toques?', font=(font_family, 16))
         label.pack(pady=20)
         
         button_frame = ctk.CTkFrame(app, fg_color="transparent")

@@ -11,6 +11,21 @@ import speech_recognition as sr
 import pyaudio
 from sentence_transformers import SentenceTransformer
 import pyttsx3
+import sys
+import logging
+
+# Add project root to path for font utils
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from src.core.font_utils import get_ubuntu_font
+import sys
+
+# Add project root to path for confetti import
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from src.features.confetti import ConfettiSystem
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -20,38 +35,27 @@ except ImportError:
     print("Advertencia: PIL/Pillow no está disponible. Los caracteres acentuados pueden no mostrarse correctamente.")
 
 
-def put_text_safe(img, text, position, font_face, font_scale, color, thickness, line_type=cv2.LINE_AA):
+def put_text_safe(img, text, position, font_face, font_scale, color, thickness, line_type=cv2.LINE_AA, bold=False):
     """
-    Función auxiliar para renderizar texto con caracteres acentuados de forma segura.
-    Si PIL está disponible y el texto contiene caracteres especiales, usa PIL.
-    De lo contrario, usa OpenCV directamente.
+    Función auxiliar para renderizar texto usando Ubuntu font de resources/fonts.
+    Siempre intenta usar Ubuntu font cuando PIL está disponible.
     Modifica la imagen in-place.
-    """
-    # Verificar si el texto contiene caracteres acentuados o especiales
-    has_special_chars = any(ord(c) > 127 for c in text)
     
-    if PIL_AVAILABLE and has_special_chars:
+    Args:
+        bold: If True, use bold Ubuntu font variant
+    """
+    # Siempre usar PIL con Ubuntu font si está disponible
+    if PIL_AVAILABLE:
         try:
             # Convertir imagen OpenCV a PIL
             img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(img_pil)
             
-            # Intentar usar una fuente que soporte UTF-8 y que sea similar a FONT_HERSHEY_DUPLEX
-            # En Windows, usar Arial o similar
+            # Always use Ubuntu font from resources/fonts
             try:
-                if os.name == 'nt':  # Windows
-                    font_path = "C:/Windows/Fonts/arial.ttf"
-                    if not os.path.exists(font_path):
-                        font_path = "C:/Windows/Fonts/calibri.ttf"
-                    if os.path.exists(font_path):
-                        # Calcular tamaño de fuente basado en font_scale para que coincida con OpenCV
-                        # FONT_HERSHEY_DUPLEX con scale 0.9 renderiza visualmente como ~22-24px
-                        # Aumentar el tamaño para que coincida mejor visualmente
-                        font_size = max(int(22 * font_scale), 16)  # Aumentado para coincidir mejor
-                        font = ImageFont.truetype(font_path, font_size)
-                    else:
-                        font = ImageFont.load_default()
-                else:  # Linux/Mac
+                if get_ubuntu_font:
+                    font = get_ubuntu_font(font_scale=font_scale, bold=bold)
+                else:
                     font = ImageFont.load_default()
             except:
                 font = ImageFont.load_default()
@@ -83,8 +87,209 @@ def put_text_safe(img, text, position, font_face, font_scale, color, thickness, 
             # Fallback a OpenCV
             cv2.putText(img, text, position, font_face, font_scale, color, thickness, line_type)
     else:
-        # Usar OpenCV directamente si no hay caracteres especiales o PIL no está disponible
+        # Fallback a OpenCV si PIL no está disponible
         cv2.putText(img, text, position, font_face, font_scale, color, thickness, line_type)
+
+
+def create_end_screen(image_path, message_text, show_confetti, original_image, original_image_pos, 
+                      view_width, view_height, confetti_system=None):
+    """
+    Crea una pantalla genérica de fin de juego que puede mostrar cualquier imagen y mensaje.
+    
+    Args:
+        image_path: Ruta a la imagen del personaje (ej: "images/LingoBien.png" o "images/LingoMal.png")
+        message_text: Texto opcional a mostrar debajo de la imagen del personaje
+        show_confetti: Boolean para habilitar/deshabilitar confetti
+        original_image: Imagen original del juego para mostrar en el fondo
+        original_image_pos: Tupla (img_x, img_y, new_width, new_height) con la posición de la imagen original
+        view_width, view_height: Dimensiones de la pantalla
+        confetti_system: Sistema de confetti (opcional, solo si show_confetti=True)
+    
+    Returns:
+        tuple: (screen, button_salir_x, button_salir_y, button_siguiente_x, button_y, button_width, button_height)
+    """
+    img_x, img_y, new_width, new_height = original_image_pos
+    
+    # Crear pantalla con opacidad negra
+    screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    
+    # Crear degradado de fondo
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        screen[y, :] = [b, g, r]
+    
+    # Dibujar imagen original con opacidad negra (0.3 para oscurecer más)
+    opacity = 0.3
+    if len(original_image.shape) == 3 and original_image.shape[2] == 4:
+        # Imagen con canal alfa
+        alpha_original = original_image[:, :, 3] / 255.0
+        img_bgr = original_image[:, :, :3]
+        for c in range(3):
+            screen[img_y:img_y+new_height, img_x:img_x+new_width, c] = (
+                (1 - opacity) * screen[img_y:img_y+new_height, img_x:img_x+new_width, c] +
+                opacity * (alpha_original * img_bgr[:, :, c] + (1 - alpha_original) * screen[img_y:img_y+new_height, img_x:img_x+new_width, c])
+            )
+    else:
+        for c in range(3):
+            screen[img_y:img_y+new_height, img_x:img_x+new_width, c] = (
+                (1 - opacity) * screen[img_y:img_y+new_height, img_x:img_x+new_width, c] +
+                opacity * original_image[:, :, c]
+            )
+    
+    # Cargar y mostrar imagen del personaje
+    if os.path.exists(image_path):
+        character_img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        if character_img is not None:
+            # Redimensionar imagen del personaje para que quepa bien
+            char_height, char_width = character_img.shape[:2]
+            max_char_width = int(view_width * 0.6)
+            max_char_height = int(view_height * 0.4)
+            
+            char_aspect = char_width / char_height
+            if char_aspect > (max_char_width / max_char_height):
+                char_new_width = max_char_width
+                char_new_height = int(max_char_width / char_aspect)
+            else:
+                char_new_height = max_char_height
+                char_new_width = int(max_char_height * char_aspect)
+            
+            character_resized = cv2.resize(character_img, (char_new_width, char_new_height), interpolation=cv2.INTER_AREA)
+            
+            # Posicionar imagen del personaje centrado (bajado un poco)
+            char_x = (view_width - char_new_width) // 2
+            char_y = 120
+            
+            # Dibujar imagen del personaje (manejar transparencia)
+            if len(character_resized.shape) == 3 and character_resized.shape[2] == 4:
+                alpha_char = character_resized[:, :, 3] / 255.0
+                img_char_bgr = character_resized[:, :, :3]
+                for c in range(3):
+                    screen[char_y:char_y+char_new_height, char_x:char_x+char_new_width, c] = (
+                        alpha_char * img_char_bgr[:, :, c] + (1 - alpha_char) * screen[char_y:char_y+char_new_height, char_x:char_x+char_new_width, c]
+                    )
+            else:
+                screen[char_y:char_y+char_new_height, char_x:char_x+char_new_width] = character_resized[:, :, :3]
+    
+    # Dibujar mensaje de texto si se proporciona
+    if message_text:
+        font_message = cv2.FONT_HERSHEY_DUPLEX
+        font_scale_message = 1.5
+        thickness_message = 3
+        text_size_message, _ = cv2.getTextSize(message_text, font_message, font_scale_message, thickness_message)
+        text_x_message = (view_width - text_size_message[0]) // 2
+        # Posicionar el mensaje debajo de la imagen del personaje
+        text_y_message = 120 + int(view_height * 0.4) + 60
+        
+        # Dibujar fondo para el mensaje
+        padding = 20
+        cv2.rectangle(screen, 
+                     (text_x_message - padding, text_y_message - text_size_message[1] - padding),
+                     (text_x_message + text_size_message[0] + padding, text_y_message + padding),
+                     (0, 0, 0), -1)
+        cv2.rectangle(screen,
+                     (text_x_message - padding, text_y_message - text_size_message[1] - padding),
+                     (text_x_message + text_size_message[0] + padding, text_y_message + padding),
+                     (255, 255, 255), 2)
+        
+        # Dibujar texto del mensaje
+        put_text_safe(screen, message_text, (text_x_message + 2, text_y_message + 2),
+                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1)  # Sombra negra
+        put_text_safe(screen, message_text, (text_x_message, text_y_message),
+                     font_message, font_scale_message, (255, 255, 255), thickness_message)  # Texto blanco
+    
+    # Dibujar dos botones: "Salir" (izquierda) y "Siguiente" (derecha)
+    button_width = 250
+    button_height = 80
+    button_spacing = 30
+    center_x = view_width // 2
+    button_y = view_height - 180  # Subidos más arriba
+    
+    # Botón "Salir" (izquierda) - Rojo como en el juego de clasificación
+    button_salir_x = center_x - button_width - button_spacing // 2
+    button_salir_text = "Salir"
+    
+    # Dibujar botón "Salir" (rojo con borde blanco, mismo estilo que clasificación)
+    cv2.rectangle(screen, (button_salir_x, button_y), 
+                 (button_salir_x + button_width, button_y + button_height), (0, 0, 200), -1)  # Rojo
+    cv2.rectangle(screen, (button_salir_x, button_y), 
+                 (button_salir_x + button_width, button_y + button_height), (255, 255, 255), 3)  # Borde blanco
+    
+    font_button = cv2.FONT_HERSHEY_DUPLEX
+    font_scale_button = 2.0  # Significantly increased for better visibility
+    thickness_button = 5  # Increased thickness for bold appearance
+    # Get text size using PIL for accurate centering with Ubuntu font
+    if PIL_AVAILABLE:
+        try:
+            font = get_ubuntu_font(font_scale=font_scale_button, bold=True)  # Use bold font
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox_salir = draw.textbbox((0, 0), button_salir_text, font=font)
+                text_width_salir = bbox_salir[2] - bbox_salir[0]
+                text_height_salir = bbox_salir[3] - bbox_salir[1]
+            except AttributeError:
+                bbox_salir = font.getbbox(button_salir_text) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width_salir = bbox_salir[2] - bbox_salir[0]
+                text_height_salir = bbox_salir[3] - bbox_salir[1]
+        except:
+            text_size_salir, _ = cv2.getTextSize(button_salir_text, font_button, font_scale_button, thickness_button)
+            text_width_salir = text_size_salir[0]
+            text_height_salir = text_size_salir[1]
+    else:
+        text_size_salir, _ = cv2.getTextSize(button_salir_text, font_button, font_scale_button, thickness_button)
+        text_width_salir = text_size_salir[0]
+        text_height_salir = text_size_salir[1]
+    # Center text in button
+    text_x_salir = button_salir_x + (button_width - text_width_salir) // 2
+    text_y_button = button_y + (button_height + text_height_salir) // 2
+    
+    put_text_safe(screen, button_salir_text, (text_x_salir, text_y_button), 
+               font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
+    
+    # Botón "Siguiente" (derecha) - Verde como en el juego de clasificación
+    button_siguiente_x = center_x + button_spacing // 2
+    button_siguiente_text = "Siguiente"
+    
+    # Dibujar botón "Siguiente" (verde con borde blanco, mismo estilo que clasificación)
+    cv2.rectangle(screen, (button_siguiente_x, button_y), 
+                 (button_siguiente_x + button_width, button_y + button_height), (0, 200, 0), -1)  # Verde
+    cv2.rectangle(screen, (button_siguiente_x, button_y), 
+                 (button_siguiente_x + button_width, button_y + button_height), (255, 255, 255), 3)  # Borde blanco
+    
+    # Get text size for "Siguiente" button
+    if PIL_AVAILABLE:
+        try:
+            try:
+                bbox_siguiente = draw.textbbox((0, 0), button_siguiente_text, font=font)
+                text_width_siguiente = bbox_siguiente[2] - bbox_siguiente[0]
+                text_height_siguiente = bbox_siguiente[3] - bbox_siguiente[1]
+            except AttributeError:
+                bbox_siguiente = font.getbbox(button_siguiente_text) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                text_width_siguiente = bbox_siguiente[2] - bbox_siguiente[0]
+                text_height_siguiente = bbox_siguiente[3] - bbox_siguiente[1]
+        except:
+            text_size_siguiente, _ = cv2.getTextSize(button_siguiente_text, font_button, font_scale_button, thickness_button)
+            text_width_siguiente = text_size_siguiente[0]
+            text_height_siguiente = text_size_siguiente[1]
+    else:
+        text_size_siguiente, _ = cv2.getTextSize(button_siguiente_text, font_button, font_scale_button, thickness_button)
+        text_width_siguiente = text_size_siguiente[0]
+        text_height_siguiente = text_size_siguiente[1]
+    # Center text in button
+    text_x_siguiente = button_siguiente_x + (button_width - text_width_siguiente) // 2
+    
+    put_text_safe(screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
+               font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
+    
+    # Draw confetti on screen if enabled
+    if show_confetti and confetti_system is not None:
+        confetti_system.draw(screen)
+    
+    return (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, 
+            text_x_salir, text_x_siguiente, text_y_button, font_button, font_scale_button, thickness_button)
 
 
 def draw_close_card(screen, view_width, view_height, elevated=False):
@@ -249,6 +454,17 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
     Juego de reconocimiento de voz para absurdos lógicos.
     Muestra una imagen aleatoria y el usuario debe describir qué está mal usando voz.
     """
+    # Configurar logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('absurdos_visuales.log'),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    
     # Tamaño de la pantalla del videobeam (viewport)
     view_width = 1280
     view_height = 800
@@ -287,15 +503,34 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
     # Variable para controlar si es la primera imagen (solo TTS en la primera)
     primera_imagen = True
     
+    # Lista para rastrear los absurdos ya mostrados (usando el nombre de la imagen como identificador único)
+    absurdos_mostrados = []
+    
     # Bucle principal del juego - continuar hasta que el usuario presione "Volver al Menú"
     while True:
         # Reconfigurar ventana en cada iteración para asegurar tamaño correcto
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
         
-        # Seleccionar un absurdo aleatorio
-        absurdo_actual = random.choice(absurdos_list)
+        # Filtrar absurdos disponibles (excluir los ya mostrados)
+        absurdos_disponibles = [
+            absurdo for absurdo in absurdos_list 
+            if absurdo.get("imagen", "") not in absurdos_mostrados
+        ]
+        
+        # Si todos los absurdos han sido mostrados, reiniciar la lista
+        if not absurdos_disponibles:
+            print("Todos los absurdos han sido mostrados. Reiniciando lista...")
+            absurdos_mostrados = []
+            absurdos_disponibles = absurdos_list
+        
+        # Seleccionar un absurdo aleatorio de los disponibles
+        absurdo_actual = random.choice(absurdos_disponibles)
         imagen_nombre = absurdo_actual.get("imagen", "")
+        
+        # Agregar el absurdo actual a la lista de mostrados
+        if imagen_nombre:
+            absurdos_mostrados.append(imagen_nombre)
         
         # Construir ruta de imagen
         assets_path = "absurdos-visuales/absurdos_logicos/assets"
@@ -437,7 +672,51 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         # Centrar horizontalmente
         img_x = (view_width - new_width) // 2
         
-        # Dibujar imagen (manejar transparencia si existe)
+        # Calcular dimensiones de la card (con padding alrededor de la imagen)
+        card_padding = 20  # Espacio alrededor de la imagen dentro de la card
+        card_width = new_width + (card_padding * 2)
+        card_height = new_height + (card_padding * 2)
+        card_x = img_x - card_padding
+        card_y = img_y - card_padding
+        
+        # Dibujar sombra de la card (múltiples capas para efecto suave)
+        shadow_offset = 8
+        shadow_layers = 5
+        for i in range(shadow_layers, 0, -1):
+            shadow_alpha = i / shadow_layers * 0.3
+            shadow_color = tuple(int(c * shadow_alpha) for c in (0, 0, 0))
+            offset = shadow_offset + (shadow_layers - i)
+            # Dibujar rectángulo redondeado con sombra
+            cv2.rectangle(
+                videobeam_screen,
+                (card_x + offset, card_y + offset),
+                (card_x + card_width + offset, card_y + card_height + offset),
+                shadow_color,
+                -1
+            )
+        
+        # Dibujar card blanca (fondo de la imagen)
+        card_color = (255, 255, 255)  # Blanco
+        cv2.rectangle(
+            videobeam_screen,
+            (card_x, card_y),
+            (card_x + card_width, card_y + card_height),
+            card_color,
+            -1
+        )
+        
+        # Dibujar borde de la card (sutil)
+        border_color = (220, 220, 220)  # Gris claro
+        border_thickness = 3
+        cv2.rectangle(
+            videobeam_screen,
+            (card_x, card_y),
+            (card_x + card_width, card_y + card_height),
+            border_color,
+            border_thickness
+        )
+        
+        # Dibujar imagen encima de la card (manejar transparencia si existe)
         if len(imagen_resized.shape) == 3 and imagen_resized.shape[2] == 4:
             # Imagen con canal alfa
             alpha = imagen_resized[:, :, 3] / 255.0
@@ -470,17 +749,39 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         # Agregar texto "Hablar" o icono de micrófono
         button_text = "Hablar"
         font_button = cv2.FONT_HERSHEY_DUPLEX
-        font_scale_button = 0.7
-        thickness_button = 2
-        text_size_button, _ = cv2.getTextSize(button_text, font_button, font_scale_button, thickness_button)
-        text_x_button = circle_center_x - text_size_button[0] // 2
-        text_y_button = circle_center_y + text_size_button[1] // 2
+        font_scale_button = 2.2  # Significantly increased for better visibility
+        thickness_button = 5  # Increased thickness for bold appearance
+        # Get text size using PIL for accurate centering with Ubuntu font
+        if PIL_AVAILABLE:
+            try:
+                font = get_ubuntu_font(font_scale=font_scale_button, bold=True)  # Use bold font
+                img_pil = Image.fromarray(cv2.cvtColor(videobeam_screen, cv2.COLOR_BGR2RGB))
+                draw = ImageDraw.Draw(img_pil)
+                try:
+                    bbox = draw.textbbox((0, 0), button_text, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                except AttributeError:
+                    bbox = font.getbbox(button_text) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+            except:
+                text_size_button, _ = cv2.getTextSize(button_text, font_button, font_scale_button, thickness_button)
+                text_width = text_size_button[0]
+                text_height = text_size_button[1]
+        else:
+            text_size_button, _ = cv2.getTextSize(button_text, font_button, font_scale_button, thickness_button)
+            text_width = text_size_button[0]
+            text_height = text_size_button[1]
+        # Center text in circle
+        text_x_button = circle_center_x - text_width // 2
+        text_y_button = circle_center_y + text_height // 4  # Adjust vertical centering
         
         # Texto con sombra
-        cv2.putText(videobeam_screen, button_text, (text_x_button + 1, text_y_button + 1), 
-                   font_button, font_scale_button, (0, 0, 0), thickness_button + 1)
-        cv2.putText(videobeam_screen, button_text, (text_x_button, text_y_button), 
-                   font_button, font_scale_button, (255, 255, 255), thickness_button)
+        put_text_safe(videobeam_screen, button_text, (text_x_button + 2, text_y_button + 2), 
+                   font_button, font_scale_button, (0, 0, 0), thickness_button + 1, bold=True)
+        put_text_safe(videobeam_screen, button_text, (text_x_button, text_y_button), 
+                   font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
         
         # Mostrar pantalla con el botón circular (siempre visible)
         videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
@@ -551,7 +852,8 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
             # Configurar reconocedor para mejor precisión
             recognizer.energy_threshold = 300  # Umbral de energía inicial
             recognizer.dynamic_energy_threshold = True  # Ajustar dinámicamente
-            recognizer.pause_threshold = 1.5  # Más tiempo de silencio después del habla para capturar mejor el final
+            recognizer.pause_threshold = 1.5  # Más tiempo de silencio después del habla para no cortar frases
+            recognizer.phrase_threshold = 0.3
             recognizer.operation_timeout = None  # Sin timeout en operaciones
             
             # Listar micrófonos disponibles para debugging
@@ -663,11 +965,10 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
             print(f"Error al cargar respuestas correctas: {e}")
             respuestas_correctas = []
         
-        # Bucle de intentos para esta imagen (máximo 3 intentos)
-        intentos_restantes = 3
+        # Bucle para esta imagen (sin límite de intentos, pero fallo inmediato si respuesta incorrecta)
         respuesta_correcta = False
         
-        while intentos_restantes > 0 and not respuesta_correcta:
+        while not respuesta_correcta:
             # Iniciar streams para detección de toques
             rgb_stream = device.create_color_stream()
             depth_stream = device.create_depth_stream()
@@ -752,10 +1053,10 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                     cv2.circle(current_screen, (circle_center_x, circle_center_y), circle_radius, (100, 100, 100), -1)  # Gris
                     cv2.circle(current_screen, (circle_center_x, circle_center_y), circle_radius, (255, 255, 255), 3)  # Borde blanco
                 
-                cv2.putText(current_screen, button_text, (text_x_button + 1, text_y_button + 1), 
-                           font_button, font_scale_button, (0, 0, 0), thickness_button + 1)
-                cv2.putText(current_screen, button_text, (text_x_button, text_y_button), 
-                           font_button, font_scale_button, (255, 255, 255), thickness_button)
+                put_text_safe(current_screen, button_text, (text_x_button + 1, text_y_button + 1), 
+                           font_button, font_scale_button, (0, 0, 0), thickness_button + 1, bold=True)
+                put_text_safe(current_screen, button_text, (text_x_button, text_y_button), 
+                           font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
                 
                 # Procesar toques (botón circular y botón X)
                 for contour in contours:
@@ -905,49 +1206,68 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                     print(f"⚠ Error al ajustar ruido ambiente: {e}")
                     # Continuar de todas formas
                 
-                # Escuchar audio con detección de silencio
+                # Escuchar audio: iniciar captura en un hilo y mostrar "Ahora puedes hablar" solo cuando ya está escuchando
                 print("=" * 50)
                 print("INICIANDO CAPTURA DE AUDIO")
                 print("=" * 50)
-                print("Esperando audio (timeout: 20 segundos, límite de frase: 25 segundos)...")
-                print("Habla ahora...")
-                
+                audio_result = [None]
+                listen_exception = [None]
+
+                def _listen_thread():
+                    try:
+                        with microphone as source:
+                            a = recognizer.listen(source, timeout=20, phrase_time_limit=25)
+                            audio_result[0] = a
+                    except sr.WaitTimeoutError:
+                        pass
+                    except Exception as e:
+                        listen_exception[0] = e
+
+                listen_thread = threading.Thread(target=_listen_thread, daemon=True)
+                listen_thread.start()
+                time.sleep(0.5)  # Dar tiempo a que listen() esté activo antes de pedir que hable
+                # Mostrar "Ahora puedes hablar" solo después de que la detección haya empezado
                 try:
-                    with microphone as source:
-                        # Escuchar hasta que detecte que terminó de hablar
-                        audio = recognizer.listen(source, timeout=20, phrase_time_limit=25)
-                        if audio:
-                            duracion = len(audio.frame_data) / audio.sample_rate
-                            print(f"✓ Audio capturado exitosamente!")
-                            print(f"  Duración: {duracion:.2f} segundos")
-                            print(f"  Tamaño de datos: {len(audio.frame_data)} bytes")
-                            print(f"  Sample rate: {audio.sample_rate} Hz")
-                        else:
-                            print("✗ No se capturó audio (audio es None)")
-                            audio = None
-                except sr.WaitTimeoutError:
+                    msg_screen = videobeam_screen.copy()
+                    franja_y_inicio = circle_center_y + circle_radius + 25
+                    cv2.rectangle(msg_screen, (0, franja_y_inicio), (view_width, view_height - 1), (200, 100, 0), -1)
+                    cv2.rectangle(msg_screen, (0, franja_y_inicio), (view_width, view_height - 1), (255, 255, 255), 2)
+                    mensaje_hablar = "Ahora puedes hablar"
+                    text_size_hablar, _ = cv2.getTextSize(mensaje_hablar, cv2.FONT_HERSHEY_DUPLEX, 0.9, 2)
+                    text_x_hablar = (view_width - text_size_hablar[0]) // 2
+                    text_y_hablar = circle_center_y + circle_radius + 50
+                    put_text_safe(msg_screen, mensaje_hablar, (text_x_hablar + 2, text_y_hablar + 2),
+                                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 0, 0), 3)
+                    put_text_safe(msg_screen, mensaje_hablar, (text_x_hablar, text_y_hablar),
+                                 cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2)
+                    videobeam_screen_scaled_msg = scale_to_videobeam(msg_screen)
+                    cv2.imshow(window_name, videobeam_screen_scaled_msg)
+                    cv2.waitKey(1)
+                except Exception:
+                    pass
+                print("Ahora puedes hablar...")
+                listen_thread.join()
+                audio = audio_result[0]
+
+                if listen_exception[0]:
+                    print(f"✗ Error al escuchar el micrófono: {listen_exception[0]}")
+                    audio = None
+                elif audio:
+                    duracion = len(audio.frame_data) / audio.sample_rate
+                    print(f"✓ Audio capturado exitosamente!")
+                    print(f"  Duración: {duracion:.2f} segundos")
+                    print(f"  Tamaño de datos: {len(audio.frame_data)} bytes")
+                    print(f"  Sample rate: {audio.sample_rate} Hz")
+                else:
                     print("✗ Tiempo de espera agotado. No se detectó ningún audio.")
-                    print("  Verifica que:")
-                    print("  - El micrófono esté funcionando")
-                    print("  - El micrófono no esté silenciado")
-                    print("  - Estés hablando lo suficientemente fuerte")
-                    audio = None
-                except Exception as e:
-                    print(f"✗ Error al escuchar el micrófono: {e}")
-                    print(f"  Tipo de error: {type(e).__name__}")
-                    import traceback
-                    traceback.print_exc()
-                    audio = None
             else:
-                # Si no se presionó el botón, continuar con el siguiente intento
-                print("Botón no presionado. Intentando de nuevo...")
-                intentos_restantes -= 1
+                # Si no se presionó el botón, continuar esperando
+                print("Botón no presionado. Esperando...")
                 continue
         
             if not boton_presionado or audio is None:
-                # Si no se presionó el botón o no se capturó audio, continuar con el siguiente intento
-                print("No se capturó audio. Intentando de nuevo...")
-                intentos_restantes -= 1
+                # Si no se presionó el botón o no se capturó audio, continuar esperando
+                print("No se capturó audio. Esperando...")
                 continue
         
             # Reconocer el audio
@@ -1121,113 +1441,25 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 yv_min = coordenadas["yv_min"]
                 yv_max = coordenadas["yv_max"]
                 
-                # Crear pantalla de éxito con opacidad negra
-                success_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                # Initialize confetti system with multiple bursts
+                confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+                confetti_system.start(multiple_bursts=True, num_burst_points=3)
                 
-                # Crear degradado de fondo
-                for y in range(view_height):
-                    ratio = y / view_height
-                    r = int(255 * (0.3 + 0.4 * ratio))
-                    g = int(200 * (0.5 + 0.3 * ratio))
-                    b = int(255 * (0.8 - 0.3 * ratio))
-                    success_screen[y, :] = [b, g, r]
-                
-                # Dibujar imagen original con opacidad negra (0.3 para oscurecer más)
-                opacity = 0.3
-                if len(imagen_resized.shape) == 3 and imagen_resized.shape[2] == 4:
-                    # Imagen con canal alfa
-                    alpha_original = imagen_resized[:, :, 3] / 255.0
-                    img_bgr = imagen_resized[:, :, :3]
-                    for c in range(3):
-                        success_screen[img_y:img_y+new_height, img_x:img_x+new_width, c] = (
-                            (1 - opacity) * success_screen[img_y:img_y+new_height, img_x:img_x+new_width, c] +
-                            opacity * (alpha_original * img_bgr[:, :, c] + (1 - alpha_original) * success_screen[img_y:img_y+new_height, img_x:img_x+new_width, c])
-                        )
-                else:
-                    for c in range(3):
-                        success_screen[img_y:img_y+new_height, img_x:img_x+new_width, c] = (
-                            (1 - opacity) * success_screen[img_y:img_y+new_height, img_x:img_x+new_width, c] +
-                            opacity * imagen_resized[:, :, c]
-                        )
-                
-                # Cargar y mostrar imagen LingoBien
-                lingo_bien_path = "images/LingoBien.png"
-                if os.path.exists(lingo_bien_path):
-                    lingo_bien_img = cv2.imread(lingo_bien_path, cv2.IMREAD_UNCHANGED)
-                    if lingo_bien_img is not None:
-                        # Redimensionar LingoBien para que quepa bien
-                        lb_height, lb_width = lingo_bien_img.shape[:2]
-                        max_lb_width = int(view_width * 0.6)
-                        max_lb_height = int(view_height * 0.4)
-                        
-                        lb_aspect = lb_width / lb_height
-                        if lb_aspect > (max_lb_width / max_lb_height):
-                            lb_new_width = max_lb_width
-                            lb_new_height = int(max_lb_width / lb_aspect)
-                        else:
-                            lb_new_height = max_lb_height
-                            lb_new_width = int(max_lb_height * lb_aspect)
-                        
-                        lingo_bien_resized = cv2.resize(lingo_bien_img, (lb_new_width, lb_new_height), interpolation=cv2.INTER_AREA)
-                        
-                        # Posicionar LingoBien centrado (bajado un poco)
-                        lb_x = (view_width - lb_new_width) // 2
-                        lb_y = 120
-                        
-                        # Dibujar LingoBien (manejar transparencia)
-                        if len(lingo_bien_resized.shape) == 3 and lingo_bien_resized.shape[2] == 4:
-                            alpha_lb = lingo_bien_resized[:, :, 3] / 255.0
-                            img_lb_bgr = lingo_bien_resized[:, :, :3]
-                            for c in range(3):
-                                success_screen[lb_y:lb_y+lb_new_height, lb_x:lb_x+lb_new_width, c] = (
-                                    alpha_lb * img_lb_bgr[:, :, c] + (1 - alpha_lb) * success_screen[lb_y:lb_y+lb_new_height, lb_x:lb_x+lb_new_width, c]
-                                )
-                        else:
-                            success_screen[lb_y:lb_y+lb_new_height, lb_x:lb_x+lb_new_width] = lingo_bien_resized[:, :, :3]
-                
-                # Dibujar dos botones: "Salir" (izquierda) y "Siguiente" (derecha)
-                button_width = 250
-                button_height = 80
-                button_spacing = 30
-                total_buttons_width = (button_width * 2) + button_spacing
-                center_x = view_width // 2
-                button_y = view_height - 180  # Subidos más arriba
-                
-                # Botón "Salir" (izquierda) - Rojo como en el juego de clasificación
-                button_salir_x = center_x - button_width - button_spacing // 2
+                # Crear pantalla de éxito usando función genérica
+                success_screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, \
+                    text_x_salir, text_x_siguiente, text_y_button, font_button, font_scale_button, thickness_button = \
+                    create_end_screen(
+                        image_path="images/LingoBien.png",
+                        message_text=None,  # No message for success screen
+                        show_confetti=True,
+                        original_image=imagen_resized,
+                        original_image_pos=(img_x, img_y, new_width, new_height),
+                        view_width=view_width,
+                        view_height=view_height,
+                        confetti_system=confetti_system
+                    )
                 button_salir_text = "Salir"
-                
-                # Dibujar botón "Salir" (rojo con borde blanco, mismo estilo que clasificación)
-                cv2.rectangle(success_screen, (button_salir_x, button_y), 
-                             (button_salir_x + button_width, button_y + button_height), (0, 0, 200), -1)  # Rojo
-                cv2.rectangle(success_screen, (button_salir_x, button_y), 
-                             (button_salir_x + button_width, button_y + button_height), (255, 255, 255), 3)  # Borde blanco
-                
-                font_button = cv2.FONT_HERSHEY_DUPLEX
-                font_scale_button = 0.8
-                thickness_button = 2
-                text_size_salir, _ = cv2.getTextSize(button_salir_text, font_button, font_scale_button, thickness_button)
-                text_x_salir = button_salir_x + (button_width - text_size_salir[0]) // 2
-                text_y_button = button_y + (button_height + text_size_salir[1]) // 2
-                
-                cv2.putText(success_screen, button_salir_text, (text_x_salir, text_y_button), 
-                           font_button, font_scale_button, (255, 255, 255), thickness_button)
-                
-                # Botón "Siguiente" (derecha) - Verde como en el juego de clasificación
-                button_siguiente_x = center_x + button_spacing // 2
                 button_siguiente_text = "Siguiente"
-                
-                # Dibujar botón "Siguiente" (verde con borde blanco, mismo estilo que clasificación)
-                cv2.rectangle(success_screen, (button_siguiente_x, button_y), 
-                             (button_siguiente_x + button_width, button_y + button_height), (0, 200, 0), -1)  # Verde
-                cv2.rectangle(success_screen, (button_siguiente_x, button_y), 
-                             (button_siguiente_x + button_width, button_y + button_height), (255, 255, 255), 3)  # Borde blanco
-                
-                text_size_siguiente, _ = cv2.getTextSize(button_siguiente_text, font_button, font_scale_button, thickness_button)
-                text_x_siguiente = button_siguiente_x + (button_width - text_size_siguiente[0]) // 2
-                
-                cv2.putText(success_screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
-                           font_button, font_scale_button, (255, 255, 255), thickness_button)
                 
                 # Mostrar pantalla de éxito
                 success_screen_scaled = scale_to_videobeam(success_screen)
@@ -1265,6 +1497,22 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 salir_bucle = False
                 try:
                     while not salir_bucle:
+                        # Update confetti system
+                        confetti_system.update()
+                        
+                        # Recreate success screen with confetti using generic function
+                        success_screen, _, _, _, _, _, _, _, _, _, _, _ = \
+                            create_end_screen(
+                                image_path="images/LingoBien.png",
+                                message_text=None,  # No message for success screen
+                                show_confetti=True,
+                                original_image=imagen_resized,
+                                original_image_pos=(img_x, img_y, new_width, new_height),
+                                view_width=view_width,
+                                view_height=view_height,
+                                confetti_system=confetti_system
+                            )
+                        
                         frame = rgb_stream.read_frame()
                         depth_frame = depth_stream.read_frame()
                         
@@ -1314,16 +1562,16 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                                              (button_siguiente_x + button_width, button_y + button_height), (0, 150, 0), -1)
                                                 cv2.rectangle(temp_screen, (button_siguiente_x, button_y), 
                                                              (button_siguiente_x + button_width, button_y + button_height), (255, 255, 255), 3)
-                                                cv2.putText(temp_screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
-                                                           font_button, font_scale_button, (255, 255, 255), thickness_button)
+                                                put_text_safe(temp_screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
+                                                           font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
                                             elif boton_tocado == "menu":
                                                 print("Botón 'Salir' presionado")
                                                 cv2.rectangle(temp_screen, (button_salir_x, button_y), 
                                                              (button_salir_x + button_width, button_y + button_height), (0, 0, 150), -1)
                                                 cv2.rectangle(temp_screen, (button_salir_x, button_y), 
                                                              (button_salir_x + button_width, button_y + button_height), (255, 255, 255), 3)
-                                                cv2.putText(temp_screen, button_salir_text, (text_x_salir, text_y_button), 
-                                                           font_button, font_scale_button, (255, 255, 255), thickness_button)
+                                                put_text_safe(temp_screen, button_salir_text, (text_x_salir, text_y_button), 
+                                                           font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
                                             
                                             temp_screen_scaled = scale_to_videobeam(temp_screen)
                                             cv2.imshow(window_name, temp_screen_scaled)
@@ -1354,7 +1602,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if button_pressed and (not hay_toque or boton_actual_tocado is None):
                             button_pressed = False
                         
-                        # Mostrar pantalla
+                        # Mostrar pantalla (already updated with confetti above)
                         success_screen_scaled = scale_to_videobeam(success_screen)
                         cv2.imshow(window_name, success_screen_scaled)
                         # Asegurar que la ventana esté configurada correctamente en cada frame
@@ -1390,93 +1638,243 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 elif accion_seleccionada == "siguiente":
                     break  # Salir del bucle de intentos y continuar con siguiente absurdo
             else:
-                # Si la respuesta es incorrecta, manejar intentos
-                intentos_restantes -= 1
+                # Si la respuesta es incorrecta, mostrar pantalla de fallo inmediatamente
+                logger.warning(
+                    f"Usuario falló con respuesta incorrecta. "
+                    f"Imagen: {imagen_nombre}, "
+                    f"Respuesta correcta: {respuesta_correcta}"
+                )
                 
-                # Detener streams antes de mostrar mensaje
+                # Detener streams antes de mostrar pantalla de fallo
                 try:
                     rgb_stream.stop()
                     depth_stream.stop()
                 except:
                     pass
                 
-                # Mostrar mensaje de intentos restantes (en la misma posición que "Escuchando...")
-                if intentos_restantes > 0:
-                    mensaje_intentos = f"Inténtalo de nuevo. Intentos restantes: {intentos_restantes}"
-                    font_intentos = cv2.FONT_HERSHEY_DUPLEX
-                    font_scale_intentos = 0.9
-                    thickness_intentos = 2
-                    text_size_intentos, _ = cv2.getTextSize(mensaje_intentos, font_intentos, font_scale_intentos, thickness_intentos)
-                    text_x_intentos = (view_width - text_size_intentos[0]) // 2
-                    text_y_intentos = circle_center_y + circle_radius + 50  # Misma posición que "Escuchando..."
+                # Salir del bucle para mostrar pantalla de fallo
+                break
+            continue
+        
+        # Verificar si salimos del bucle porque la respuesta fue incorrecta
+        if not respuesta_correcta:
+            # Mostrar pantalla de fallo (similar a éxito pero con LingoMal)
+            # Detener cualquier stream que pueda estar activo antes de mostrar pantalla de fallo
+            try:
+                if 'rgb_stream' in locals():
+                    rgb_stream.stop()
+            except:
+                pass
+            try:
+                if 'depth_stream' in locals():
+                    depth_stream.stop()
+            except:
+                pass
+            
+            # Asegurar que la ventana esté visible y actualizada
+            cv2.waitKey(100)  # Dar tiempo para que la ventana se actualice
+            
+            # Extraer coordenadas para touch detection
+            xw_min = coordenadas["xw_min"]
+            xw_max = coordenadas["xw_max"]
+            yw_min = coordenadas["yw_min"]
+            yw_max = coordenadas["yw_max"]
+            xv_min = coordenadas["xv_min"]
+            xv_max = coordenadas["xv_max"]
+            yv_min = coordenadas["yv_min"]
+            yv_max = coordenadas["yv_max"]
+            
+            # Crear pantalla de fallo usando función genérica
+            failure_screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, \
+                text_x_salir, text_x_siguiente, text_y_button, font_button, font_scale_button, thickness_button = \
+                create_end_screen(
+                    image_path="images/LingoMal.png",
+                    message_text="Respuesta incorrecta",
+                    show_confetti=False,
+                    original_image=imagen_resized,
+                    original_image_pos=(img_x, img_y, new_width, new_height),
+                    view_width=view_width,
+                    view_height=view_height,
+                    confetti_system=None
+                )
+            button_salir_text = "Salir"
+            button_siguiente_text = "Siguiente"
+            
+            # Mostrar pantalla de fallo
+            failure_screen_scaled = scale_to_videobeam(failure_screen)
+            cv2.imshow(window_name, failure_screen_scaled)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+            cv2.waitKey(100)  # Dar tiempo para que la ventana se muestre correctamente
+            
+            # Iniciar streams para detección de toques
+            rgb_stream = device.create_color_stream()
+            depth_stream = device.create_depth_stream()
+            rgb_stream.start()
+            depth_stream.start()
+            
+            # Pequeña pausa para asegurar que los streams estén listos
+            time.sleep(0.2)
+            
+            # Función para detectar toque en los botones
+            def detectar_boton_tocado(cx_roi, cy_roi):
+                # cx_roi y cy_roi son coordenadas relativas a depth_roi
+                # Convertir coordenadas de ROI a viewport
+                sx = float(xv_max - xv_min) / (xw_max - xw_min)
+                sy = float(yv_max - yv_min) / (yw_max - yw_min)
+                x_viewport = int(xv_min + (cx_roi * sx))
+                y_viewport = int(yv_min + (cy_roi * sy))
+                
+                # Verificar botón "Salir" (izquierda)
+                if button_salir_x <= x_viewport <= button_salir_x + button_width and button_y <= y_viewport <= button_y + button_height:
+                    return "menu"
+                # Verificar botón "Siguiente" (derecha)
+                elif button_siguiente_x <= x_viewport <= button_siguiente_x + button_width and button_y <= y_viewport <= button_y + button_height:
+                    return "siguiente"
+                return None
+            
+            # Bucle de detección de toques
+            button_pressed = False
+            accion_seleccionada = None  # "siguiente", "menu", o None
+            salir_bucle = False
+            try:
+                while not salir_bucle:
+                    # Recreate failure screen using generic function
+                    failure_screen, _, _, _, _, _, _, _, _, _, _, _ = \
+                        create_end_screen(
+                            image_path="images/LingoMal.png",
+                            message_text="Respuesta incorrecta",
+                            show_confetti=False,
+                            original_image=imagen_resized,
+                            original_image_pos=(img_x, img_y, new_width, new_height),
+                            view_width=view_width,
+                            view_height=view_height,
+                            confetti_system=None
+                        )
                     
-                    # Color naranja oscuro para el fondo de mensajes de reintento
-                    color_fondo_intentos = (0, 140, 255)  # Naranja oscuro
+                    frame = rgb_stream.read_frame()
+                    depth_frame = depth_stream.read_frame()
                     
-                    # Dibujar franja de fondo con color naranja (siempre en la parte inferior)
-                    franja_y_inicio = text_y_intentos - 25
-                    franja_y_fin = view_height - 1  # Llegar hasta el borde inferior
-                    cv2.rectangle(videobeam_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                 color_fondo_intentos, -1)  # Fondo naranja
-                    cv2.rectangle(videobeam_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                 (255, 255, 255), 2)  # Borde blanco
+                    if frame is None or depth_frame is None:
+                        continue
                     
-                    # Texto siempre en blanco (usar función segura para caracteres acentuados)
-                    put_text_safe(videobeam_screen, mensaje_intentos, (text_x_intentos + 2, text_y_intentos + 2), 
-                               font_intentos, font_scale_intentos, (0, 0, 0), thickness_intentos + 1)  # Sombra negra
-                    put_text_safe(videobeam_screen, mensaje_intentos, (text_x_intentos, text_y_intentos), 
-                               font_intentos, font_scale_intentos, (255, 255, 255), thickness_intentos)  # Texto blanco
+                    rgb_data = np.frombuffer(frame.get_buffer_as_uint8(), dtype=np.uint8).reshape(480, 640, 3)
+                    depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
+                    depth_data = cv2.flip(depth_data, 1)
+                    depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
                     
-                    # Dibujar botón X (cerrar) en la esquina superior derecha
-                    draw_close_card(videobeam_screen, view_width, view_height, elevated=False)
+                    # Crear máscara de toques
+                    touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
+                    kernel = np.ones((3, 3), np.uint8)
+                    touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
+                    contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     
-                    videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
-                    cv2.imshow(window_name, videobeam_screen_scaled)
+                    # Verificar si hay toques en esta iteración
+                    hay_toque = False
+                    boton_actual_tocado = None
+                    
+                    # Procesar toques
+                    for contour in contours:
+                        area = cv2.contourArea(contour)
+                        if area > 50:
+                            M = cv2.moments(contour)
+                            if M['m00'] != 0:
+                                cx = int(M['m10'] / M['m00'])
+                                cy = int(M['m01'] / M['m00'])
+                                
+                                # Verificar si se tocó algún botón
+                                boton_tocado = detectar_boton_tocado(cx, cy)
+                                if boton_tocado:
+                                    hay_toque = True
+                                    boton_actual_tocado = boton_tocado
+                                    
+                                    # Solo procesar si no se había presionado antes
+                                    if not button_pressed:
+                                        button_pressed = True
+                                        
+                                        # Animación de botón presionado
+                                        temp_screen = failure_screen.copy()
+                                        
+                                        if boton_tocado == "siguiente":
+                                            print("Botón 'Siguiente' presionado")
+                                            cv2.rectangle(temp_screen, (button_siguiente_x, button_y), 
+                                                         (button_siguiente_x + button_width, button_y + button_height), (0, 150, 0), -1)
+                                            cv2.rectangle(temp_screen, (button_siguiente_x, button_y), 
+                                                         (button_siguiente_x + button_width, button_y + button_height), (255, 255, 255), 3)
+                                            put_text_safe(temp_screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
+                                                       font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
+                                        elif boton_tocado == "menu":
+                                            print("Botón 'Salir' presionado")
+                                            cv2.rectangle(temp_screen, (button_salir_x, button_y), 
+                                                         (button_salir_x + button_width, button_y + button_height), (0, 0, 150), -1)
+                                            cv2.rectangle(temp_screen, (button_salir_x, button_y), 
+                                                         (button_salir_x + button_width, button_y + button_height), (255, 255, 255), 3)
+                                            put_text_safe(temp_screen, button_salir_text, (text_x_salir, text_y_button), 
+                                                       font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
+                                        
+                                        temp_screen_scaled = scale_to_videobeam(temp_screen)
+                                        cv2.imshow(window_name, temp_screen_scaled)
+                                        cv2.waitKey(200)
+                                        
+                                        # Detener streams y salir del bucle
+                                        rgb_stream.stop()
+                                        depth_stream.stop()
+                                        
+                                        if boton_tocado == "menu":
+                                            # Volver al menú principal
+                                            accion_seleccionada = "menu"
+                                            # Cerrar solo la ventana del juego (no todas las ventanas)
+                                            try:
+                                                cv2.destroyWindow(window_name)
+                                            except:
+                                                pass
+                                            salir_bucle = True
+                                            break
+                                        elif boton_tocado == "siguiente":
+                                            # Continuar con siguiente absurdo
+                                            accion_seleccionada = "siguiente"
+                                            cv2.destroyWindow(window_name)
+                                            salir_bucle = True
+                                            break
+                    
+                    # Resetear flag si no hay toque o si el toque no está en ningún botón
+                    if button_pressed and (not hay_toque or boton_actual_tocado is None):
+                        button_pressed = False
+                    
+                    # Mostrar pantalla
+                    failure_screen_scaled = scale_to_videobeam(failure_screen)
+                    cv2.imshow(window_name, failure_screen_scaled)
+                    # Asegurar que la ventana esté configurada correctamente en cada frame
+                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                    cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
                     cv2.waitKey(10)
                     
-                    # Esperar un momento antes de permitir otro intento
-                    time.sleep(2)
-                    
-                    # Continuar con el siguiente intento (volver al inicio del bucle para la misma imagen)
-                    # Reiniciar botón habilitado para el siguiente intento
-                    boton_habilitado = True
-            continue
-        else:
-            # Se agotaron los intentos, mostrar mensaje y continuar con siguiente absurdo
-            mensaje_final = "Se agotaron los intentos"
-            font_final = cv2.FONT_HERSHEY_DUPLEX
-            font_scale_final = 0.9
-            thickness_final = 2
-            text_size_final, _ = cv2.getTextSize(mensaje_final, font_final, font_scale_final, thickness_final)
-            text_x_final = (view_width - text_size_final[0]) // 2
-            # Mover al área inferior (misma posición que "Escuchando...")
-            text_y_final = circle_center_y + circle_radius + 50
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord('q'):
+                        rgb_stream.stop()
+                        depth_stream.stop()
+                        try:
+                            cv2.destroyWindow(window_name)
+                        except:
+                            pass
+                        return
+            finally:
+                # Asegurar que los streams se detengan
+                try:
+                    rgb_stream.stop()
+                    depth_stream.stop()
+                except:
+                    pass
             
-            # Color rojo oscuro para el fondo de mensaje de intentos agotados
-            color_fondo_final = (0, 0, 200)  # Rojo oscuro
-            
-            # Dibujar franja de fondo con color rojo oscuro (siempre en la parte inferior)
-            franja_y_inicio = text_y_final - 25
-            franja_y_fin = view_height - 1  # Llegar hasta el borde inferior
-            cv2.rectangle(videobeam_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                         color_fondo_final, -1)  # Fondo rojo oscuro
-            cv2.rectangle(videobeam_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                         (255, 255, 255), 2)  # Borde blanco
-            
-            # Texto siempre en blanco (usar función segura para caracteres acentuados)
-            put_text_safe(videobeam_screen, mensaje_final, (text_x_final + 2, text_y_final + 2), 
-                       font_final, font_scale_final, (0, 0, 0), thickness_final + 1)  # Sombra negra
-            put_text_safe(videobeam_screen, mensaje_final, (text_x_final, text_y_final), 
-                       font_final, font_scale_final, (255, 255, 255), thickness_final)  # Texto blanco
-            
-            # Dibujar botón X (cerrar) en la esquina superior derecha
-            draw_close_card(videobeam_screen, view_width, view_height, elevated=False)
-            
-            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
-            cv2.imshow(window_name, videobeam_screen_scaled)
-            cv2.waitKey(10)
-            
-            time.sleep(3)
-            # Continuar con el siguiente absurdo (salir del bucle de intentos)
-            break
+            # Verificar qué acción se seleccionó
+            if accion_seleccionada == "menu":
+                # Cerrar solo la ventana del juego (no todas las ventanas)
+                try:
+                    cv2.destroyWindow(window_name)
+                except:
+                    pass
+                return  # Volver al menú principal - salir completamente de la función
+            elif accion_seleccionada == "siguiente":
+                # Continuar con siguiente absurdo (el bucle externo continuará automáticamente)
+                pass
 

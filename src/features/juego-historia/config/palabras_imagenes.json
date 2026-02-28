@@ -1,0 +1,26 @@
+{
+  "sujetos": {
+    "Niño": ["niño", "nino"],
+    "Niña": ["niña", "nina"],
+    "Doctor": ["doctor"],
+    "Maestra": ["maestra"],
+    "Policia": ["policía", "policia"],
+    "Perro": ["perro"]
+  },
+  "acciones": {
+    "Dar": ["dar", "da", "dio"],
+    "Ayudar": ["ayudar", "ayuda", "ayudó"],
+    "Correr": ["correr", "corre", "corrió"],
+    "Jugar": ["jugar", "juega", "jugó"],
+    "Llamar": ["llamar", "llama", "llamó"],
+    "Trabajar": ["trabajar", "trabaja", "trabajó"]
+  },
+  "lugares": {
+    "Calle": ["calle"],
+    "Clinica": ["clínica", "clinica"],
+    "Estacion-Policia": ["estación", "estacion", "policía", "policia"],
+    "Escuela": ["escuela"],
+    "Casa": ["casa"],
+    "Parque": ["parque"]
+  }
+}

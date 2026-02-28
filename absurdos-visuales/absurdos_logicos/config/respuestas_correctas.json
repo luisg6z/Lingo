@@ -61,7 +61,17 @@
         "los barcos van en el agua no en la carretera",
         "no es correcto, debería estar en el agua",
         "está mal porque los barcos no van en la carretera",
-        "un barco no puede estar en la carretera"
+        "un barco no puede estar en la carretera",
+        "el barco no puede estar en la calle, debe estar en el agua",
+        "está mal porque los barcos van en el agua no en la calle",
+        "los barcos no van en la calle, van en el agua",
+        "es incorrecto, un barco debe estar en el agua no en la calle",
+        "está mal, los barcos no van en la calle",
+        "es imposible que un barco esté en la calle",
+        "los barcos van en el agua no en la calle",
+        "no es correcto, debería estar en el agua no en la calle",
+        "está mal porque los barcos no van en la calle",
+        "un barco no puede estar en la calle"
       ]
     },
     {
@@ -109,7 +119,17 @@
         "los cerdos caminan no vuelan",
         "no es correcto, debería caminar",
         "está mal porque los cerdos no vuelan",
-        "un cerdo no puede volar"
+        "un cerdo no puede volar",
+        "el cerdo no puede volar porque no tiene alas",
+        "está mal porque los cerdos no tienen alas",
+        "los cerdos no vuelan porque no tienen alas",
+        "es incorrecto, un cerdo no tiene alas para volar",
+        "está mal, los cerdos no tienen alas",
+        "es imposible que un cerdo vuele porque no tiene alas",
+        "los cerdos no tienen alas, por eso no vuelan",
+        "no es correcto, los cerdos no tienen alas",
+        "está mal porque los cerdos no tienen alas para volar",
+        "un cerdo no puede volar porque no tiene alas"
       ]
     },
     {
@@ -141,7 +161,8 @@
         "la lluvia es de agua no de piedras",
         "no es correcto, debería llover agua",
         "está mal porque no puede llover piedras",
-        "no puede llover piedras"
+        "no puede llover piedras",
+        "de la nube está lloviendo piedras"
       ]
     },
     {
@@ -189,7 +210,25 @@
         "los peces no son gatos",
         "no es correcto, no debería parecer un gato",
         "está mal porque los peces no son gatos",
-        "un pez no puede ser un gato"
+        "un pez no puede ser un gato",
+        "los gatos no tienen cola de sirena",
+        "está mal porque los gatos no tienen cola de sirena",
+        "es incorrecto, los gatos no tienen cola de sirena",
+        "está mal, los gatos no tienen cola de sirena",
+        "es imposible que un gato tenga cola de sirena",
+        "los gatos no tienen cola de sirena",
+        "no es correcto, los gatos no tienen cola de sirena",
+        "está mal porque los gatos no tienen cola de sirena",
+        "un gato no puede tener cola de sirena",
+        "los gatos no tienen cola de pez",
+        "está mal porque los gatos no tienen cola de pez",
+        "es incorrecto, los gatos no tienen cola de pez",
+        "está mal, los gatos no tienen cola de pez",
+        "es imposible que un gato tenga cola de pez",
+        "los gatos no tienen cola de pez",
+        "no es correcto, los gatos no tienen cola de pez",
+        "está mal porque los gatos no tienen cola de pez",
+        "un gato no puede tener cola de pez"
       ]
     },
     {
@@ -205,7 +244,17 @@
         "se pinta con pincel no con banana",
         "no es correcto, debería usar un pincel",
         "está mal porque no se puede pintar con banana",
-        "no se puede pintar con una banana"
+        "no se puede pintar con una banana",
+        "no se puede pintar con un cambur, se usa un pincel",
+        "está mal porque se pinta con pincel no con cambur",
+        "no se pinta con cambur, se pinta con pincel",
+        "es incorrecto, se debe usar un pincel no un cambur",
+        "está mal, no se puede pintar con cambur",
+        "es imposible pintar con un cambur",
+        "se pinta con pincel no con cambur",
+        "no es correcto, debería usar un pincel no un cambur",
+        "está mal porque no se puede pintar con cambur",
+        "no se puede pintar con un cambur"
       ]
     },
     {
@@ -221,7 +270,17 @@
         "las pizzas son calientes no heladas",
         "no es correcto, debería estar caliente",
         "está mal porque las pizzas no son heladas",
-        "una pizza no puede estar helada"
+        "una pizza no puede estar helada",
+        "la pizza no puede tener hielo",
+        "está mal porque la pizza no puede tener hielo",
+        "es incorrecto, una pizza no debe tener hielo",
+        "está mal, la pizza no puede tener hielo",
+        "es imposible que una pizza tenga hielo",
+        "la pizza no puede tener hielo, debe estar caliente",
+        "no es correcto, la pizza no puede tener hielo",
+        "está mal porque la pizza no puede tener hielo",
+        "una pizza no puede tener hielo",
+        "las pizzas no tienen hielo"
       ]
     },
     {
@@ -349,7 +408,18 @@
         "se come en plato no en zapato",
         "no es correcto, debería usar un plato",
         "está mal porque no se puede comer en zapato",
-        "no se puede comer en un zapato"
+        "no se puede comer en un zapato",
+        "el zapato no se puede comer",
+        "está mal porque el zapato no se puede comer",
+        "es incorrecto, el zapato no se puede comer",
+        "está mal, el zapato no se puede comer",
+        "es imposible comer un zapato",
+        "el zapato no puede comerse",
+        "no es correcto, el zapato no se puede comer",
+        "está mal porque el zapato no se puede comer",
+        "un zapato no se puede comer",
+        "los zapatos no se pueden comer",
+        "el zapato no es comida"
       ]
     }
   ]

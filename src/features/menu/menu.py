@@ -17,10 +17,32 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.insert(0, project_root)
 from src.core.calibration import load_and_validate_dmax_map
 from src.core.ui_utils import scale_to_videobeam, draw_logo
+from src.components import draw_rectangular_button
 
 # Import clasificacion feature
 from src.features.clasificacion import levels as niveles_clasificacion
 from src.features.clasificacion.levels import mostrar_seleccion_niveles_clasificacion
+
+# Import juego-historia feature (folder has hyphen, need to use importlib)
+import importlib.util
+historia_selection_path = os.path.join(project_root, "src", "features", "juego-historia", "selection.py")
+historia_spec = importlib.util.spec_from_file_location("historia_selection", historia_selection_path)
+historia_selection_module = importlib.util.module_from_spec(historia_spec)
+sys.modules["historia_selection"] = historia_selection_module
+historia_spec.loader.exec_module(historia_selection_module)
+mostrar_seleccion_escenarios_historia = historia_selection_module.mostrar_seleccion_escenarios_historia
+
+# Cargar mostrar_seleccion_historias desde main.py (vista de selección de historias con sujetos y botón Siguiente)
+_mostrar_seleccion_historias_func = None
+def _get_mostrar_seleccion_historias():
+    global _mostrar_seleccion_historias_func
+    if _mostrar_seleccion_historias_func is None:
+        main_path = os.path.join(project_root, "main.py")
+        main_spec = importlib.util.spec_from_file_location("main_historia", main_path)
+        main_mod = importlib.util.module_from_spec(main_spec)
+        main_spec.loader.exec_module(main_mod)
+        _mostrar_seleccion_historias_func = main_mod.mostrar_seleccion_historias
+    return _mostrar_seleccion_historias_func
 
 # Import absurdos-visuales feature (folder has hyphen, need to use importlib)
 import importlib.util
@@ -94,7 +116,7 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
         videobeam_screen[y, :] = [b, g, r]  # BGR
     
     # Dibujar el logo usando la función auxiliar
-    logo_loaded = draw_logo(videobeam_screen)
+    logo_loaded = draw_logo(videobeam_screen, view_width, view_height)
     
     # Cargar imágenes de bocina
     bocina_image = None
@@ -718,7 +740,10 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                 if not juego_seleccionado_flag:
                     juego_seleccionado = detectar_juego_seleccionado(x_touch, y_touch, game_positions)
                     if juego_seleccionado:
-                        print(f"Juego seleccionado: {juego_seleccionado}")
+                        print(f"Juego seleccionado: '{juego_seleccionado}' (tipo: {type(juego_seleccionado)})")
+                        print(f"Comparación con 'Historias': {juego_seleccionado == 'Historias'}")
+                        print(f"Comparación con 'Juego de Clasificacion': {juego_seleccionado == 'Juego de Clasificacion'}")
+                        print(f"Comparación con 'Absurdos Logicos': {juego_seleccionado == 'Absurdos Logicos'}")
                         
                         # Mostrar efecto de elevación de la card (animación rápida)
                         temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
@@ -728,7 +753,7 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                             g = int(200 * (0.5 + 0.3 * ratio))
                             b = int(255 * (0.8 - 0.3 * ratio))
                             temp_screen[y, :] = [b, g, r]
-                        draw_logo(temp_screen)
+                        draw_logo(temp_screen, view_width, view_height)
                         draw_game_cards(temp_screen, game_positions, elevated_card=juego_seleccionado)
                         draw_close_card_main(temp_screen, elevated=False, muted=bocina_muted)
                         temp_screen_scaled = scale_to_videobeam(temp_screen)
@@ -756,7 +781,7 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                                 g = int(200 * (0.5 + 0.3 * ratio))
                                 b = int(255 * (0.8 - 0.3 * ratio))
                                 videobeam_screen[y, :] = [b, g, r]
-                            draw_logo(videobeam_screen)
+                            draw_logo(videobeam_screen, view_width, view_height)
                             draw_game_cards(videobeam_screen, game_positions)
                             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
                             # Verificar si la ventana existe antes de recrearla
@@ -802,7 +827,7 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                                 g = int(200 * (0.5 + 0.3 * ratio))
                                 b = int(255 * (0.8 - 0.3 * ratio))
                                 videobeam_screen[y, :] = [b, g, r]
-                            draw_logo(videobeam_screen)
+                            draw_logo(videobeam_screen, view_width, view_height)
                             draw_game_cards(videobeam_screen, game_positions)
                             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
                             
@@ -836,7 +861,73 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                             frame_count = 0
                             juego_seleccionado_flag = True  # Establecer flag para salir del bucle de detección
                             break  # Salir del bucle de detección de toques para mostrar el menú principal
+                        # Si es Historias, mostrar vista de selección de historias (sujetos, acciones, lugares, botón Siguiente)
+                        elif juego_seleccionado == "Historias":
+                            print(f"Redirigiendo a selección de historias para: {juego_seleccionado}")
+                            try:
+                                resultado_seleccion = _get_mostrar_seleccion_historias()(
+                                    device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                    existing_window_name="Menú de Juegos"
+                                )
+                                if resultado_seleccion:
+                                    if isinstance(resultado_seleccion, dict):
+                                        sujetos_seleccionados = resultado_seleccion.get('sujetos', [])
+                                        acciones_seleccionadas = resultado_seleccion.get('acciones', [])
+                                        lugares_seleccionados = resultado_seleccion.get('lugares', [])
+                                        print(f"Sujetos seleccionados: {sujetos_seleccionados}")
+                                        print(f"Acciones seleccionadas: {acciones_seleccionadas}")
+                                        print(f"Lugares seleccionados: {lugares_seleccionados}")
+                                    elif isinstance(resultado_seleccion, list):
+                                        print(f"Sujetos seleccionados: {resultado_seleccion}")
+                            except Exception as e:
+                                print(f"Error al llamar a mostrar_seleccion_historias: {e}")
+                                import traceback
+                                traceback.print_exc()
+                            
+                            # Volver al menú principal después de seleccionar escenario o cancelar
+                            # Recrear el menú
+                            videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+                            for y in range(view_height):
+                                ratio = y / view_height
+                                r = int(255 * (0.3 + 0.4 * ratio))
+                                g = int(200 * (0.5 + 0.3 * ratio))
+                                b = int(255 * (0.8 - 0.3 * ratio))
+                                videobeam_screen[y, :] = [b, g, r]
+                            draw_logo(videobeam_screen, view_width, view_height)
+                            draw_game_cards(videobeam_screen, game_positions)
+                            draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
+                            # Verificar si la ventana existe antes de recrearla
+                            try:
+                                prop = cv2.getWindowProperty("Menú de Juegos", cv2.WND_PROP_VISIBLE)
+                                if prop < 0:
+                                    # La ventana no existe, crearla
+                                    cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                    cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                    cv2.waitKey(50)
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                                else:
+                                    # La ventana existe, solo asegurar que esté en pantalla completa
+                                    cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                    cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            except:
+                                # Si hay error, crear la ventana
+                                cv2.namedWindow("Menú de Juegos", cv2.WINDOW_NORMAL)
+                                cv2.moveWindow("Menú de Juegos", 1920, 0)
+                                cv2.waitKey(50)
+                                cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                                cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
+                            cv2.imshow("Menú de Juegos", videobeam_screen_scaled)
+                            cv2.waitKey(50)
+                            cv2.setWindowProperty("Menú de Juegos", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                            cv2.resizeWindow("Menú de Juegos", VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
+                            # Reiniciar el contador de frames para evitar detecciones inmediatas
+                            frame_count = 0
+                            juego_seleccionado_flag = True
+                            break
                         else:
+                            print(f"Juego no reconocido: '{juego_seleccionado}'. Mostrando mensaje de 'disponible pronto'")
                             mostrar_mensaje_juego(juego_seleccionado)
                             
                             # Redibujar el menú después del mensaje
@@ -849,7 +940,7 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                                 b = int(255 * (0.8 - 0.3 * ratio))
                                 videobeam_screen[y, :] = [b, g, r]
                             # Redibujar logo y cards
-                            draw_logo(videobeam_screen)
+                            draw_logo(videobeam_screen, view_width, view_height)
                             draw_game_cards(videobeam_screen, game_positions)
                             draw_close_card_main(videobeam_screen, elevated=False, muted=bocina_muted)
                             videobeam_screen_scaled = scale_to_videobeam(videobeam_screen)
@@ -986,20 +1077,22 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
             y_text_tipo = initial_y - 20  # Ajustar para que quede encima
             cv2.putText(screen, encabezado_tipo, (x_text_tipo, y_text_tipo), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
-            # Dibujar los botones de modo y tipo
+            # Dibujar los botones de modo y tipo usando componente
             for opcion, (x, y) in positions.items():
-                # Dibujar rectángulo del botón
-                cv2.rectangle(screen, (x, y), (x + button_width, y + button_height), (255, 255, 255), 2)
-                # Escribir el texto de la opción
-                texto = opcion
-                fuente = cv2.FONT_HERSHEY_SIMPLEX
-                escala_fuente = 0.8
-                color_texto = (255, 255, 255)  # Blanco
-                grosor_texto = 2
-                tamaño_texto, _ = cv2.getTextSize(texto, fuente, escala_fuente, grosor_texto)
-                text_x = x + (button_width - tamaño_texto[0]) // 2
-                text_y = y + (button_height + tamaño_texto[1]) // 2
-                cv2.putText(screen, texto, (text_x, text_y), fuente, escala_fuente, color_texto, grosor_texto)
+                # Dibujar botón con borde blanco y sin relleno
+                draw_rectangular_button(
+                    screen,
+                    x, y, button_width, button_height,
+                    opcion,
+                    bg_color=(0, 0, 0),  # Background color (not used when fill=False)
+                    border_color=(255, 255, 255),
+                    border_thickness=2,
+                    text_color=(255, 255, 255),
+                    font_scale=0.8,
+                    bold=False,
+                    shadow=False,
+                    fill=False  # Border only, no fill
+                )
 
             # Si se ha seleccionado "Virtuales", mostramos la selección del número de fichas
             if mostrar_num_piezas:
@@ -1041,17 +1134,39 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                 y_text_piezas = num_piezas_area['y'] - 20  # Ajustar para que quede encima
                 cv2.putText(screen, titulo_piezas, (x_text_piezas, y_text_piezas), fuente_encabezado, escala_fuente_encabezado, color_encabezado, grosor_encabezado)
 
-                # Dibujar botón de disminuir
-                cv2.rectangle(screen, (decrease_button['x1'], decrease_button['y1']),
-                            (decrease_button['x2'], decrease_button['y2']), (255, 255, 255), 2)
-                cv2.putText(screen, "-", (decrease_button['x1'] + 25, decrease_button['y1'] + 55),
-                            cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+                # Dibujar botón de disminuir usando componente
+                draw_rectangular_button(
+                    screen,
+                    decrease_button['x1'], decrease_button['y1'],
+                    decrease_button['x2'] - decrease_button['x1'],
+                    decrease_button['y2'] - decrease_button['y1'],
+                    "-",
+                    bg_color=(0, 0, 0),  # Background color (not used when fill=False)
+                    border_color=(255, 255, 255),
+                    border_thickness=2,
+                    text_color=(255, 255, 255),
+                    font_scale=2.0,
+                    bold=False,
+                    shadow=False,
+                    fill=False  # Border only, no fill
+                )
 
-                # Dibujar botón de aumentar
-                cv2.rectangle(screen, (increase_button['x1'], increase_button['y1']),
-                            (increase_button['x2'], increase_button['y2']), (255, 255, 255), 2)
-                cv2.putText(screen, "+", (increase_button['x1'] + 20, increase_button['y1'] + 55),
-                            cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+                # Dibujar botón de aumentar usando componente
+                draw_rectangular_button(
+                    screen,
+                    increase_button['x1'], increase_button['y1'],
+                    increase_button['x2'] - increase_button['x1'],
+                    increase_button['y2'] - increase_button['y1'],
+                    "+",
+                    bg_color=(0, 0, 0),  # Background color (not used when fill=False)
+                    border_color=(255, 255, 255),
+                    border_thickness=2,
+                    text_color=(255, 255, 255),
+                    font_scale=2.0,
+                    bold=False,
+                    shadow=False,
+                    fill=False  # Border only, no fill
+                )
 
                 # Dibujar área de visualización del número de piezas
                 cv2.rectangle(screen, (num_display_area['x'], num_display_area['y']),

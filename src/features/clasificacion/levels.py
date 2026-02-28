@@ -16,6 +16,13 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 import sys
 sys.path.insert(0, project_root)
 
+# Import confetti system
+from src.features.confetti import ConfettiSystem
+# Import button components
+from src.components import draw_rectangular_button, is_point_in_rectangular_button
+# Import Ubuntu font utility
+from src.core.font_utils import put_text_ubuntu
+
 
 # Variable global para mantener el estado del audio entre vistas
 _bocina_muted_global = False
@@ -177,6 +184,21 @@ def reproducir_texto_tts(texto):
     except Exception as e:
         print(f"⚠ Error al reproducir TTS: {e}")
 
+
+def reproducir_texto_tts_async(texto):
+    """
+    Reproduce un texto con TTS en un hilo en segundo plano (no bloquea la UI).
+    Usar al seleccionar nivel o escenario.
+    """
+    import threading
+    def _run():
+        try:
+            reproducir_texto_tts(texto)
+        except Exception as e:
+            print(f"⚠ Error TTS async: {e}")
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
 def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
     """
     Muestra la vista de selección de niveles para el juego de Clasificación.
@@ -219,119 +241,6 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     
     # Dibujar el logo
     draw_logo_func(niveles_screen)
-    
-    # Inicializar pygame si no está inicializado
-    global _bocina_muted_global, _background_music_loaded
-    try:
-        pygame.mixer.get_init()
-    except:
-        pygame.mixer.init()
-    
-    # Cargar imágenes de bocina
-    bocina_image = None
-    bocina_mute_image = None
-    if os.path.exists("images/Bocina.png"):
-        bocina_image = cv2.imread("images/Bocina.png", cv2.IMREAD_UNCHANGED)
-        if bocina_image is not None:
-            print("✓ Imagen de bocina cargada: images/Bocina.png")
-        else:
-            print("⚠ No se pudo cargar la imagen de bocina: images/Bocina.png")
-    else:
-        print("⚠ No se encontró la imagen: images/Bocina.png")
-    
-    if os.path.exists("images/BocinaMute.png"):
-        bocina_mute_image = cv2.imread("images/BocinaMute.png", cv2.IMREAD_UNCHANGED)
-        if bocina_mute_image is not None:
-            print("✓ Imagen de bocina mute cargada: images/BocinaMute.png")
-        else:
-            print("⚠ No se pudo cargar la imagen de bocina mute: images/BocinaMute.png")
-    else:
-        print("⚠ No se encontró la imagen: images/BocinaMute.png")
-    
-    # Cargar y configurar el audio de fondo usando mixer.music (solo si no está cargado)
-    if not _background_music_loaded:
-        archivo = "relax-meditate-gentle-peaceful-291162.mp3"
-        if os.path.exists(archivo):
-            try:
-                pygame.mixer.music.load(archivo)
-                # El módulo music suele responder mejor a volúmenes bajos
-                pygame.mixer.music.set_volume(0.05)  # 5% de volumen
-                _background_music_loaded = True
-                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3 (volumen al 5%)")
-                # Iniciar el audio automáticamente si no está muteado
-                if not _bocina_muted_global:
-                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
-                    print("✓ Audio de fondo iniciado automáticamente")
-            except Exception as e:
-                print(f"⚠ No se pudo cargar el audio de fondo: {e}")
-        else:
-            print("⚠ No se encontró el archivo de audio: relax-meditate-gentle-peaceful-291162.mp3")
-    
-    # Usar el estado global del audio
-    bocina_muted = _bocina_muted_global
-    
-    # Función para dibujar card cuadrada con icono de bocina
-    def draw_bocina_card(screen, muted=False):
-        """
-        Dibuja una card cuadrada con icono de bocina en el centro
-        
-        Args:
-            screen: Pantalla donde dibujar
-            muted: Si True, muestra la imagen de bocina muteada (BocinaMute.png), si False muestra Bocina.png
-        """
-        # Posición base del lado derecho (parte inferior)
-        base_card_size = 100
-        card_margin_x = 180
-        card_margin_y = 50  # Margen desde el borde inferior
-        
-        card_size = base_card_size
-        # Calcular posición del cuadrado (esquina superior izquierda)
-        card_x = view_width - card_margin_x - card_size
-        card_y = view_height - card_margin_y - card_size
-        
-        # Dibujar la imagen completa como fondo de la card
-        current_bocina_image = bocina_mute_image if muted and bocina_mute_image is not None else bocina_image
-        if current_bocina_image is not None:
-            # Redimensionar la imagen para que llene completamente la card
-            bocina_resized = cv2.resize(current_bocina_image, (card_size, card_size), interpolation=cv2.INTER_AREA)
-            
-            # Asegurar que esté dentro de los límites
-            if card_x >= 0 and card_y >= 0 and card_x + card_size <= screen.shape[1] and card_y + card_size <= screen.shape[0]:
-                # Si la imagen tiene canal alfa (transparencia)
-                if len(bocina_resized.shape) == 3 and bocina_resized.shape[2] == 4:
-                    # Extraer canal alfa
-                    alpha = bocina_resized[:, :, 3] / 255.0
-                    # Convertir BGR de la imagen
-                    img_bgr = bocina_resized[:, :, :3]
-                    # Mezclar con el fondo
-                    for c in range(3):
-                        screen[card_y:card_y+card_size, card_x:card_x+card_size, c] = (
-                            alpha * img_bgr[:, :, c] + 
-                            (1 - alpha) * screen[card_y:card_y+card_size, card_x:card_x+card_size, c]
-                        )
-                else:
-                    # Sin canal alfa, copiar directamente
-                    screen[card_y:card_y+card_size, card_x:card_x+card_size] = bocina_resized[:, :, :3]
-    
-    # Variables para la card de bocina (necesarias para la detección)
-    bocina_card_size = 100
-    bocina_card_margin_x = 180
-    bocina_card_margin_y = 50
-    bocina_card_x = view_width - bocina_card_margin_x - bocina_card_size
-    bocina_card_y = view_height - bocina_card_margin_y - bocina_card_size
-    
-    # Crear un área rectangular de detección
-    bocina_card_detection_size = int(bocina_card_size * 1.2)
-    bocina_card_detection_x = bocina_card_x - int(bocina_card_size * 0.1)
-    bocina_card_detection_y = bocina_card_y - int(bocina_card_size * 0.1)
-    bocina_card_detection_w = bocina_card_detection_size
-    bocina_card_detection_h = bocina_card_detection_size
-    
-    # Función para detectar si se tocó la card de bocina
-    def detectar_bocina_card_touch(x_touch, y_touch):
-        """Detecta si el toque está dentro del área de la card de bocina"""
-        return (bocina_card_detection_x <= x_touch <= bocina_card_detection_x + bocina_card_detection_w and
-                bocina_card_detection_y <= y_touch <= bocina_card_detection_y + bocina_card_detection_h)
     
     # Función para dibujar card redonda con X (estilo infantil)
     def draw_close_card(screen, elevated=False):
@@ -456,18 +365,33 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
     
     # Título
     titulo_texto = "Selecciona el nivel"
-    font_titulo = cv2.FONT_HERSHEY_DUPLEX
     font_scale_titulo = 1.2
     thickness_titulo = 3
-    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
-    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    # Get text size using PIL for accurate measurement with Ubuntu font
+    try:
+        from PIL import Image, ImageDraw
+        from src.core.font_utils import get_ubuntu_font
+        font = get_ubuntu_font(font_scale=font_scale_titulo, bold=True)
+        img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            bbox = draw.textbbox((0, 0), titulo_texto, font=font)
+            text_width = bbox[2] - bbox[0]
+        except AttributeError:
+            bbox = font.getbbox(titulo_texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+            text_width = bbox[2] - bbox[0]
+    except:
+        # Fallback to OpenCV
+        text_size_titulo, _ = cv2.getTextSize(titulo_texto, cv2.FONT_HERSHEY_DUPLEX, font_scale_titulo, thickness_titulo)
+        text_width = text_size_titulo[0]
+    text_x_titulo = (view_width - text_width) // 2
     text_y_titulo = 180
     # Sombra del título
-    cv2.putText(niveles_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+    put_text_ubuntu(niveles_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
     # Título principal
-    cv2.putText(niveles_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+    put_text_ubuntu(niveles_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
     
     # Dimensiones de las cards de niveles (mismo tamaño que las cards del menú principal)
     card_width = 320  # Mismo tamaño que las cards del menú principal
@@ -571,18 +495,16 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
             nivel_y = y_scaled + int(320 * scale_factor)  # Posición en la parte inferior de la card
             
             # Dibujar sombra del texto
-            cv2.putText(screen, texto_nivel, (nivel_x + 2, nivel_y + 2), 
-                       font_nivel, font_scale_nivel, (0, 0, 0), thickness_nivel + 1)
+            put_text_ubuntu(screen, texto_nivel, (nivel_x + 2, nivel_y + 2), 
+                       font_scale_nivel, (0, 0, 0), thickness_nivel + 1, bold=False)
             # Dibujar texto principal (blanco)
-            cv2.putText(screen, texto_nivel, (nivel_x, nivel_y), 
-                       font_nivel, font_scale_nivel, (255, 255, 255), thickness_nivel)
+            put_text_ubuntu(screen, texto_nivel, (nivel_x, nivel_y), 
+                       font_scale_nivel, (255, 255, 255), thickness_nivel, bold=False)
     
     # Dibujar las cards inicialmente
     draw_nivel_cards(niveles_screen, nivel_positions)
     # Dibujar card de cerrar (X roja)
     draw_close_card(niveles_screen)
-    # Dibujar card de bocina
-    draw_bocina_card(niveles_screen, muted=bocina_muted)
     
     # Usar el nombre de ventana existente si se proporciona, o crear uno nuevo
     window_name = existing_window_name if existing_window_name else "Selección de Niveles"
@@ -670,47 +592,6 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                         x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
                         y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
                         
-                        # Primero verificar si se tocó la card de bocina
-                        if detectar_bocina_card_touch(x_touch, y_touch):
-                            print("Card de bocina tocada en selección de niveles")
-                            
-                            # Cambiar el estado de mute (usando variable global)
-                            _bocina_muted_global = not _bocina_muted_global
-                            bocina_muted = _bocina_muted_global
-                            print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
-                            
-                            # Controlar el audio según el estado
-                            if _background_music_loaded:
-                                if bocina_muted:
-                                    # Detener el audio cuando está muteada
-                                    pygame.mixer.music.stop()
-                                    print("Audio de fondo detenido")
-                                else:
-                                    # Asegurar que el volumen esté al 1% antes de reproducir
-                                    pygame.mixer.music.set_volume(0.05)
-                                    # Reproducir el audio en bucle cuando está activada
-                                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
-                                    print("Audio de fondo iniciado (bucle)")
-                            
-                            # Redibujar la pantalla con el nuevo estado
-                            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                            for y in range(view_height):
-                                ratio = y / view_height
-                                r = int(255 * (0.3 + 0.4 * ratio))
-                                g = int(200 * (0.5 + 0.3 * ratio))
-                                b = int(255 * (0.8 - 0.3 * ratio))
-                                temp_screen[y, :] = [b, g, r]
-                            draw_logo_func(temp_screen)
-                            cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                       font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                            cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                       font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
-                            draw_nivel_cards(temp_screen, nivel_positions)
-                            draw_close_card(temp_screen)
-                            draw_bocina_card(temp_screen, muted=bocina_muted)
-                            niveles_screen = temp_screen
-                            continue
-                        
                         # Verificar si se tocó la card de cerrar
                         if detectar_close_card_touch_niveles(x_touch, y_touch):
                             print("Card de cerrar tocada - Volviendo al menú principal")
@@ -726,10 +607,10 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                     temp_screen[y, :] = [b, g, r]
                                 draw_logo_func(temp_screen)
                                 # Redibujar título
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 
                                 # Dibujar cards de niveles
                                 draw_nivel_cards(temp_screen, nivel_positions)
@@ -739,9 +620,6 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                     draw_close_card(temp_screen, elevated=True)
                                 else:
                                     draw_close_card(temp_screen, elevated=False)
-                                
-                                # Dibujar card de bocina
-                                draw_bocina_card(temp_screen, muted=bocina_muted)
                                 
                                 temp_screen_scaled = scale_to_videobeam(temp_screen)
                                 cv2.imshow(window_name, temp_screen_scaled)
@@ -757,6 +635,7 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                 
                                 nivel_seleccionado = nivel_sel
                                 nivel_seleccionado_flag = True
+                                reproducir_texto_tts_async(f"Nivel {nivel_sel}")
                                 
                                 # Animación rápida de elevación (reducida para que no tarde)
                                 for frame_num in range(5):
@@ -769,19 +648,18 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                         temp_screen[y, :] = [b, g, r]
                                     draw_logo_func(temp_screen)
                                     # Redibujar título
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                    put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                    put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                     
                                     if frame_num >= 2:
                                         draw_nivel_cards(temp_screen, nivel_positions, elevated_card=nivel_sel)
                                     else:
                                         draw_nivel_cards(temp_screen, nivel_positions)
                                     
-                                    # Dibujar card de cerrar y card de bocina (mantenerlas visibles)
+                                    # Dibujar card de cerrar (mantenerla visible)
                                     draw_close_card(temp_screen)
-                                    draw_bocina_card(temp_screen, muted=bocina_muted)
                                     temp_screen_scaled = scale_to_videobeam(temp_screen)
                                     cv2.imshow(window_name, temp_screen_scaled)
                                     cv2.waitKey(20)
@@ -796,14 +674,13 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                     temp_screen[y, :] = [b, g, r]
                                 draw_logo_func(temp_screen)
                                 # Redibujar título
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 draw_nivel_cards(temp_screen, nivel_positions, elevated_card=nivel_sel)
-                                # Dibujar card de cerrar y card de bocina (mantenerlas visibles)
+                                # Dibujar card de cerrar (mantenerla visible)
                                 draw_close_card(temp_screen)
-                                draw_bocina_card(temp_screen, muted=bocina_muted)
                                 temp_screen_scaled = scale_to_videobeam(temp_screen)
                                 cv2.imshow(window_name, temp_screen_scaled)
                                 cv2.waitKey(200)
@@ -828,13 +705,12 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                         b = int(255 * (0.8 - 0.3 * ratio))
                                         niveles_screen[y, :] = [b, g, r]
                                     draw_logo_func(niveles_screen)
-                                    cv2.putText(niveles_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                    cv2.putText(niveles_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                    put_text_ubuntu(niveles_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                    put_text_ubuntu(niveles_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                     draw_nivel_cards(niveles_screen, nivel_positions)
                                     draw_close_card(niveles_screen)
-                                    draw_bocina_card(niveles_screen, muted=bocina_muted)
                                     niveles_screen_scaled = scale_to_videobeam(niveles_screen)
                                     cv2.imshow(window_name, niveles_screen_scaled)
                                     nivel_seleccionado_flag = False
@@ -847,9 +723,8 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
                                 
                                 return nivel_seleccionado
             
-            # Redibujar card de cerrar y card de bocina en cada frame
+            # Redibujar card de cerrar en cada frame
             draw_close_card(niveles_screen)
-            draw_bocina_card(niveles_screen, muted=bocina_muted)
             niveles_screen_scaled = scale_to_videobeam(niveles_screen)
             cv2.imshow(window_name, niveles_screen_scaled)
             
@@ -908,119 +783,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     
     # Dibujar el logo
     draw_logo_func(cards_screen)
-    
-    # Inicializar pygame si no está inicializado
-    global _bocina_muted_global, _background_music_loaded
-    try:
-        pygame.mixer.get_init()
-    except:
-        pygame.mixer.init()
-    
-    # Cargar imágenes de bocina
-    bocina_image = None
-    bocina_mute_image = None
-    if os.path.exists("images/Bocina.png"):
-        bocina_image = cv2.imread("images/Bocina.png", cv2.IMREAD_UNCHANGED)
-        if bocina_image is not None:
-            print("✓ Imagen de bocina cargada: images/Bocina.png")
-        else:
-            print("⚠ No se pudo cargar la imagen de bocina: images/Bocina.png")
-    else:
-        print("⚠ No se encontró la imagen: images/Bocina.png")
-    
-    if os.path.exists("images/BocinaMute.png"):
-        bocina_mute_image = cv2.imread("images/BocinaMute.png", cv2.IMREAD_UNCHANGED)
-        if bocina_mute_image is not None:
-            print("✓ Imagen de bocina mute cargada: images/BocinaMute.png")
-        else:
-            print("⚠ No se pudo cargar la imagen de bocina mute: images/BocinaMute.png")
-    else:
-        print("⚠ No se encontró la imagen: images/BocinaMute.png")
-    
-    # Cargar y configurar el audio de fondo usando mixer.music (solo si no está cargado)
-    if not _background_music_loaded:
-        archivo = "relax-meditate-gentle-peaceful-291162.mp3"
-        if os.path.exists(archivo):
-            try:
-                pygame.mixer.music.load(archivo)
-                # El módulo music suele responder mejor a volúmenes bajos
-                pygame.mixer.music.set_volume(0.05)  # 5% de volumen
-                _background_music_loaded = True
-                print("✓ Audio de fondo cargado: relax-meditate-gentle-peaceful-291162.mp3 (volumen al 5%)")
-                # Iniciar el audio automáticamente si no está muteado
-                if not _bocina_muted_global:
-                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
-                    print("✓ Audio de fondo iniciado automáticamente")
-            except Exception as e:
-                print(f"⚠ No se pudo cargar el audio de fondo: {e}")
-        else:
-            print("⚠ No se encontró el archivo de audio: relax-meditate-gentle-peaceful-291162.mp3")
-    
-    # Usar el estado global del audio
-    bocina_muted = _bocina_muted_global
-    
-    # Función para dibujar card cuadrada con icono de bocina
-    def draw_bocina_card(screen, muted=False):
-        """
-        Dibuja una card cuadrada con icono de bocina en el centro
-        
-        Args:
-            screen: Pantalla donde dibujar
-            muted: Si True, muestra la imagen de bocina muteada (BocinaMute.png), si False muestra Bocina.png
-        """
-        # Posición base del lado derecho (parte inferior)
-        base_card_size = 100
-        card_margin_x = 180
-        card_margin_y = 50  # Margen desde el borde inferior
-        
-        card_size = base_card_size
-        # Calcular posición del cuadrado (esquina superior izquierda)
-        card_x = view_width - card_margin_x - card_size
-        card_y = view_height - card_margin_y - card_size
-        
-        # Dibujar la imagen completa como fondo de la card
-        current_bocina_image = bocina_mute_image if muted and bocina_mute_image is not None else bocina_image
-        if current_bocina_image is not None:
-            # Redimensionar la imagen para que llene completamente la card
-            bocina_resized = cv2.resize(current_bocina_image, (card_size, card_size), interpolation=cv2.INTER_AREA)
-            
-            # Asegurar que esté dentro de los límites
-            if card_x >= 0 and card_y >= 0 and card_x + card_size <= screen.shape[1] and card_y + card_size <= screen.shape[0]:
-                # Si la imagen tiene canal alfa (transparencia)
-                if len(bocina_resized.shape) == 3 and bocina_resized.shape[2] == 4:
-                    # Extraer canal alfa
-                    alpha = bocina_resized[:, :, 3] / 255.0
-                    # Convertir BGR de la imagen
-                    img_bgr = bocina_resized[:, :, :3]
-                    # Mezclar con el fondo
-                    for c in range(3):
-                        screen[card_y:card_y+card_size, card_x:card_x+card_size, c] = (
-                            alpha * img_bgr[:, :, c] + 
-                            (1 - alpha) * screen[card_y:card_y+card_size, card_x:card_x+card_size, c]
-                        )
-                else:
-                    # Sin canal alfa, copiar directamente
-                    screen[card_y:card_y+card_size, card_x:card_x+card_size] = bocina_resized[:, :, :3]
-    
-    # Variables para la card de bocina (necesarias para la detección)
-    bocina_card_size = 100
-    bocina_card_margin_x = 180
-    bocina_card_margin_y = 50
-    bocina_card_x = view_width - bocina_card_margin_x - bocina_card_size
-    bocina_card_y = view_height - bocina_card_margin_y - bocina_card_size
-    
-    # Crear un área rectangular de detección
-    bocina_card_detection_size = int(bocina_card_size * 1.2)
-    bocina_card_detection_x = bocina_card_x - int(bocina_card_size * 0.1)
-    bocina_card_detection_y = bocina_card_y - int(bocina_card_size * 0.1)
-    bocina_card_detection_w = bocina_card_detection_size
-    bocina_card_detection_h = bocina_card_detection_size
-    
-    # Función para detectar si se tocó la card de bocina
-    def detectar_bocina_card_touch(x_touch, y_touch):
-        """Detecta si el toque está dentro del área de la card de bocina"""
-        return (bocina_card_detection_x <= x_touch <= bocina_card_detection_x + bocina_card_detection_w and
-                bocina_card_detection_y <= y_touch <= bocina_card_detection_y + bocina_card_detection_h)
     
     # Función para dibujar card redonda con X (estilo infantil)
     def draw_close_card(screen, elevated=False):
@@ -1128,27 +890,50 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     
     # Título
     titulo_texto = f"Selecciona {num_escenarios} escenario(s)"
-    font_titulo = cv2.FONT_HERSHEY_DUPLEX
     font_scale_titulo = 1.2
     thickness_titulo = 3
-    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
-    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    # Get text size using PIL for accurate measurement with Ubuntu font
+    try:
+        from PIL import Image, ImageDraw
+        from src.core.font_utils import get_ubuntu_font
+        font = get_ubuntu_font(font_scale=font_scale_titulo, bold=True)
+        img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            bbox = draw.textbbox((0, 0), titulo_texto, font=font)
+            text_width = bbox[2] - bbox[0]
+        except AttributeError:
+            bbox = font.getbbox(titulo_texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+            text_width = bbox[2] - bbox[0]
+    except:
+        # Fallback to OpenCV
+        text_size_titulo, _ = cv2.getTextSize(titulo_texto, cv2.FONT_HERSHEY_DUPLEX, font_scale_titulo, thickness_titulo)
+        text_width = text_size_titulo[0]
+    text_x_titulo = (view_width - text_width) // 2
     text_y_titulo = 200  # Bajado más para evitar choque con el logo
     # Sombra del título
-    cv2.putText(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+    put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
     # Título principal
-    cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+    put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
     
     # Definir 5 cards con las imágenes reales
+    # Mapping scenario id -> text for TTS (spoken name when selected)
+    escenario_tts_text = {
+        "Escenario 1": "Granja",
+        "Escenario 2": "Calle",
+        "Escenario 3": "Restaurante",
+        "Escenario 4": "Ropa",
+        "Escenario 5": "Colegio",
+    }
     card_images = {}
     card_paths = {
         "Escenario 1": "images/EscenarioGranja.png",
-        "Escenario 2": "images/Escenario 6.png",
-        "Escenario 3": "images/Escenario 3.png",
-        "Escenario 4": "images/Escenario 4.png",
-        "Escenario 5": "images/Escenario 8.png"
+        "Escenario 2": "images/EscenarioCalle.png",
+        "Escenario 3": "images/Escenariorestaurante.png",
+        "Escenario 4": "images/EscenarioRopa.png",
+        "Escenario 5": "images/EscenarioColegio.png"
     }
     
     # Cargar imágenes de las cards
@@ -1274,8 +1059,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
     draw_cards(cards_screen, card_positions, selected_cards)
     # Dibujar card de cerrar (X roja)
     draw_close_card(cards_screen)
-    # Dibujar card de bocina
-    draw_bocina_card(cards_screen, muted=bocina_muted)
     
     # Función para dibujar card redonda con flecha hacia la izquierda (estilo infantil)
     def draw_back_card(screen, elevated=False):
@@ -1481,7 +1264,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                     # Mostrar pantalla incluso si no hay frame
                     draw_close_card(cards_screen)
                     draw_back_card(cards_screen)
-                    draw_bocina_card(cards_screen, muted=bocina_muted)
                     cards_screen_scaled = scale_to_videobeam(cards_screen)
                     cv2.imshow(window_name, cards_screen_scaled)
                     key = cv2.waitKey(1) & 0xFF
@@ -1510,7 +1292,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                 # Mostrar pantalla incluso si hay error
                 draw_close_card(cards_screen)
                 draw_back_card(cards_screen)
-                draw_bocina_card(cards_screen, muted=bocina_muted)
                 cards_screen_scaled = scale_to_videobeam(cards_screen)
                 cv2.imshow(window_name, cards_screen_scaled)
                 key = cv2.waitKey(1) & 0xFF
@@ -1534,50 +1315,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                         x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
                         y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
                         
-                        # Primero verificar si se tocó la card de bocina
-                        if detectar_bocina_card_touch(x_touch, y_touch):
-                            print("Card de bocina tocada en vista 5 escenarios")
-                            
-                            # Cambiar el estado de mute (usando variable global)
-                            _bocina_muted_global = not _bocina_muted_global
-                            bocina_muted = _bocina_muted_global
-                            print(f"Bocina {'muteada' if bocina_muted else 'activada'}")
-                            
-                            # Controlar el audio según el estado
-                            if _background_music_loaded:
-                                if bocina_muted:
-                                    # Detener el audio cuando está muteada
-                                    pygame.mixer.music.stop()
-                                    print("Audio de fondo detenido")
-                                else:
-                                    # Asegurar que el volumen esté al 1% antes de reproducir
-                                    pygame.mixer.music.set_volume(0.05)
-                                    # Reproducir el audio en bucle cuando está activada
-                                    pygame.mixer.music.play(-1)  # -1 significa bucle infinito
-                                    print("Audio de fondo iniciado (bucle)")
-                            
-                            # Redibujar la pantalla con el nuevo estado
-                            temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-                            for y in range(view_height):
-                                ratio = y / view_height
-                                r = int(255 * (0.3 + 0.4 * ratio))
-                                g = int(200 * (0.5 + 0.3 * ratio))
-                                b = int(255 * (0.8 - 0.3 * ratio))
-                                temp_screen[y, :] = [b, g, r]
-                            draw_logo_func(temp_screen)
-                            cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                       font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                            cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                       font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
-                            draw_cards(temp_screen, card_positions, selected_cards)
-                            draw_close_card(temp_screen)
-                            draw_back_card(temp_screen)
-                            draw_bocina_card(temp_screen, muted=bocina_muted)
-                            cards_screen = temp_screen
-                            cards_screen_scaled = scale_to_videobeam(cards_screen)
-                            cv2.imshow(window_name, cards_screen_scaled)
-                            continue
-                        
                         # Verificar si se tocó la card de retroceso (flecha)
                         if detectar_back_card_touch(x_touch, y_touch):
                             print("Card de retroceso (flecha) tocada - Volviendo a la vista anterior")
@@ -1597,10 +1334,10 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                 draw_logo_func(temp_screen)
                                 
                                 # Redibujar título
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 
                                 # Redibujar cards
                                 draw_cards(temp_screen, card_positions, selected_cards)
@@ -1611,9 +1348,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                     draw_back_card(temp_screen, elevated=True)
                                 else:
                                     draw_back_card(temp_screen, elevated=False)
-                                
-                                # Dibujar card de bocina
-                                draw_bocina_card(temp_screen, muted=bocina_muted)
                                 
                                 temp_screen_scaled = scale_to_videobeam(temp_screen)
                                 cv2.imshow(window_name, temp_screen_scaled)
@@ -1640,10 +1374,10 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                 draw_logo_func(temp_screen)
                                 
                                 # Redibujar título
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 
                                 # Redibujar cards
                                 draw_cards(temp_screen, card_positions, selected_cards)
@@ -1654,9 +1388,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                     draw_close_card(temp_screen, elevated=True)
                                 else:
                                     draw_close_card(temp_screen, elevated=False)
-                                
-                                # Dibujar card de bocina
-                                draw_bocina_card(temp_screen, muted=bocina_muted)
                                 
                                 temp_screen_scaled = scale_to_videobeam(temp_screen)
                                 cv2.imshow(window_name, temp_screen_scaled)
@@ -1682,6 +1413,7 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                     if len(selected_cards) < num_escenarios:
                                         selected_cards.append(card_tocada)
                                         print(f"Escenario seleccionado: {card_tocada}. Total: {len(selected_cards)}/{num_escenarios}")
+                                        reproducir_texto_tts_async(escenario_tts_text.get(card_tocada, card_tocada))
                                         
                                         # Si ya se seleccionaron todos los necesarios
                                         if len(selected_cards) == num_escenarios:
@@ -1695,14 +1427,13 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                                 b = int(255 * (0.8 - 0.3 * ratio))
                                                 cards_screen[y, :] = [b, g, r]
                                             draw_logo_func(cards_screen)
-                                            cv2.putText(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                                       font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                            cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                                       font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                            put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                                       font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                            put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                                       font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                             draw_cards(cards_screen, card_positions, selected_cards)
                                             draw_close_card(cards_screen)
                                             draw_back_card(cards_screen)
-                                            draw_bocina_card(cards_screen, muted=bocina_muted)
                                             cards_screen_scaled = scale_to_videobeam(cards_screen)
                                             cv2.imshow(window_name, cards_screen_scaled)
                                             
@@ -1739,10 +1470,10 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                                     b = int(255 * (0.8 - 0.3 * ratio))
                                                     cards_screen[y, :] = [b, g, r]
                                                 draw_logo_func(cards_screen)
-                                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                                put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                                put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                                 draw_cards(cards_screen, card_positions, selected_cards)
                                                 draw_close_card(cards_screen)
                                                 draw_back_card(cards_screen)
@@ -1767,10 +1498,10 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
                                 draw_logo_func(cards_screen)
                                 
                                 # Redibujar título
-                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(cards_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 
                                 # Redibujar cards con estado actualizado
                                 draw_cards(cards_screen, card_positions, selected_cards)
@@ -1780,7 +1511,6 @@ def mostrar_vista_5_escenarios(device, coordenadas, dmax_map, dmin_map, draw_log
             # Redibujar cards en cada frame
             draw_close_card(cards_screen)
             draw_back_card(cards_screen)
-            draw_bocina_card(cards_screen, muted=bocina_muted)
             cards_screen_scaled = scale_to_videobeam(cards_screen)
             cv2.imshow(window_name, cards_screen_scaled)
             
@@ -1977,6 +1707,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     # Variable para rastrear si el juego está completo y si ya se reprodujo el sonido
     juego_completo = False
     sonido_reproducido = False
+    
+    # Initialize confetti system
+    confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+    confetti_started = False
     
     # Cargar imágenes de los escenarios seleccionados
     loaded_escenario_images = {}
@@ -2238,18 +1972,33 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     
     # Título
     titulo_texto = f"Escenarios seleccionados: {num_escenarios}"
-    font_titulo = cv2.FONT_HERSHEY_DUPLEX
     font_scale_titulo = 1.2
     thickness_titulo = 3
-    text_size_titulo, _ = cv2.getTextSize(titulo_texto, font_titulo, font_scale_titulo, thickness_titulo)
-    text_x_titulo = (view_width - text_size_titulo[0]) // 2
+    # Get text size using PIL for accurate measurement with Ubuntu font
+    try:
+        from PIL import Image, ImageDraw
+        from src.core.font_utils import get_ubuntu_font
+        font = get_ubuntu_font(font_scale=font_scale_titulo, bold=True)
+        img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            bbox = draw.textbbox((0, 0), titulo_texto, font=font)
+            text_width = bbox[2] - bbox[0]
+        except AttributeError:
+            bbox = font.getbbox(titulo_texto) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+            text_width = bbox[2] - bbox[0]
+    except:
+        # Fallback to OpenCV
+        text_size_titulo, _ = cv2.getTextSize(titulo_texto, cv2.FONT_HERSHEY_DUPLEX, font_scale_titulo, thickness_titulo)
+        text_width = text_size_titulo[0]
+    text_x_titulo = (view_width - text_width) // 2
     text_y_titulo = 180
     # Sombra del título
-    cv2.putText(rectangulos_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
+    put_text_ubuntu(rectangulos_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
     # Título principal
-    cv2.putText(rectangulos_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+    put_text_ubuntu(rectangulos_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
     
     # Calcular el área visible de la cámara (donde realmente puede detectar toques)
     visible_area_width = xv_max - xv_min
@@ -2646,15 +2395,25 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 button_salir_y2 = button_salir_y1 + button_height
                                 
                                 # Verificar si se tocó el botón "Volver a jugar"
-                                if (button_volver_x1 <= x_touch <= button_volver_x2 and 
-                                    button_volver_y1 <= y_touch <= button_volver_y2):
+                                volver_bounds = {
+                                    'x1': button_volver_x1,
+                                    'y1': button_volver_y1,
+                                    'x2': button_volver_x2,
+                                    'y2': button_volver_y2
+                                }
+                                if is_point_in_rectangular_button(x_touch, y_touch, volver_bounds):
                                     print("Botón 'Volver a jugar' presionado - Volviendo a vista de niveles")
                                     # Retornar "RESTART" para volver a la vista de niveles
                                     return "RESTART"
                                 
                                 # Verificar si se tocó el botón "Salir"
-                                elif (button_salir_x1 <= x_touch <= button_salir_x2 and 
-                                      button_salir_y1 <= y_touch <= button_salir_y2):
+                                salir_bounds = {
+                                    'x1': button_salir_x1,
+                                    'y1': button_salir_y1,
+                                    'x2': button_salir_x2,
+                                    'y2': button_salir_y2
+                                }
+                                if is_point_in_rectangular_button(x_touch, y_touch, salir_bounds):
                                     print("Botón 'Salir' presionado - Volviendo al menú principal")
                                     # Retornar "MAIN_MENU" para volver al menú principal
                                     return "MAIN_MENU"
@@ -2711,10 +2470,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                     draw_logo_func(temp_screen)
                                     
                                     # Redibujar título
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                               font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                    cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                               font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                    put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                               font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                    put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                               font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                     
                                     # Redibujar rectángulos
                                     draw_rectangulos(temp_screen, rectangulos_positions)
@@ -2751,10 +2510,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 draw_logo_func(temp_screen)
                                 
                                 # Redibujar título
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                                           font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-                                cv2.putText(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                                           font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                                           font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+                                put_text_ubuntu(temp_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                                           font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
                                 
                                 # Redibujar rectángulos
                                 draw_rectangulos(temp_screen, rectangulos_positions)
@@ -2785,10 +2544,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             draw_logo_func(rectangulos_screen)
             
             # Redibujar título
-            cv2.putText(rectangulos_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
-                       font_titulo, font_scale_titulo, (0, 0, 0), thickness_titulo + 2)
-            cv2.putText(rectangulos_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
-                       font_titulo, font_scale_titulo, (255, 255, 255), thickness_titulo)
+            put_text_ubuntu(rectangulos_screen, titulo_texto, (text_x_titulo + 2, text_y_titulo + 2), 
+                       font_scale_titulo, (0, 0, 0), thickness_titulo + 2, bold=True)
+            put_text_ubuntu(rectangulos_screen, titulo_texto, (text_x_titulo, text_y_titulo), 
+                       font_scale_titulo, (255, 255, 255), thickness_titulo, bold=True)
             
             # Redibujar rectángulos
             draw_rectangulos(rectangulos_screen, rectangulos_positions)
@@ -3324,6 +3083,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             # Si todos los escenarios tienen 5 piezas correctas, activar juego completo
             if todos_completos and not juego_completo:
                 juego_completo = True
+                # Start confetti animation with multiple bursts
+                if not confetti_started:
+                    confetti_system.start(multiple_bursts=True, num_burst_points=3)
+                    confetti_started = True
                 # Reproducir sonido de correcto solo una vez
                 if correcto_sound is not None and not sonido_reproducido:
                     try:
@@ -3336,6 +3099,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             
             # Si el juego está completo, mostrar pantalla de éxito con botones
             if juego_completo and imagen_exito is not None:
+                # Update confetti system
+                confetti_system.update()
+                
                 # Crear overlay negro con opacidad 50%
                 overlay_negro = np.zeros_like(rectangulos_screen)
                 overlay = cv2.addWeighted(rectangulos_screen, 0.5, overlay_negro, 0.5, 0)
@@ -3410,36 +3176,36 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                 button_salir_x2 = button_salir_x1 + button_width
                 button_salir_y2 = button_salir_y1 + button_height
                 
-                # Dibujar botón "Volver a jugar" (verde)
-                cv2.rectangle(overlay, (button_volver_x1, button_volver_y1), 
-                             (button_volver_x2, button_volver_y2), (0, 200, 0), -1)
-                cv2.rectangle(overlay, (button_volver_x1, button_volver_y1), 
-                             (button_volver_x2, button_volver_y2), (255, 255, 255), 3)
+                # Dibujar botón "Volver a jugar" (verde) usando componente
+                volver_button_bounds = draw_rectangular_button(
+                    overlay,
+                    button_volver_x1, button_volver_y1, button_width, button_height,
+                    "Volver a jugar",
+                    bg_color=(0, 200, 0),  # Green
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.0,
+                    bold=True,
+                    shadow=False
+                )
                 
-                # Texto "Volver a jugar"
-                texto_volver = "Volver a jugar"
-                font = cv2.FONT_HERSHEY_DUPLEX
-                font_scale = 0.7
-                thickness = 2
-                (text_width, text_height), baseline = cv2.getTextSize(texto_volver, font, font_scale, thickness)
-                text_x_volver = button_volver_x1 + (button_width - text_width) // 2
-                text_y_volver = button_volver_y1 + (button_height + text_height) // 2
-                cv2.putText(overlay, texto_volver, (text_x_volver, text_y_volver), 
-                           font, font_scale, (255, 255, 255), thickness)
+                # Dibujar botón "Salir" (rojo) usando componente
+                salir_button_bounds = draw_rectangular_button(
+                    overlay,
+                    button_salir_x1, button_salir_y1, button_width, button_height,
+                    "Salir",
+                    bg_color=(0, 0, 200),  # Red
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.0,
+                    bold=True,
+                    shadow=False
+                )
                 
-                # Dibujar botón "Salir" (rojo)
-                cv2.rectangle(overlay, (button_salir_x1, button_salir_y1), 
-                             (button_salir_x2, button_salir_y2), (0, 0, 200), -1)
-                cv2.rectangle(overlay, (button_salir_x1, button_salir_y1), 
-                             (button_salir_x2, button_salir_y2), (255, 255, 255), 3)
-                
-                # Texto "Salir"
-                texto_salir = "Salir"
-                (text_width, text_height), baseline = cv2.getTextSize(texto_salir, font, font_scale, thickness)
-                text_x_salir = button_salir_x1 + (button_width - text_width) // 2
-                text_y_salir = button_salir_y1 + (button_height + text_height) // 2
-                cv2.putText(overlay, texto_salir, (text_x_salir, text_y_salir), 
-                           font, font_scale, (255, 255, 255), thickness)
+                # Draw confetti on overlay
+                confetti_system.draw(overlay)
                 
                 rectangulos_screen = overlay
             
