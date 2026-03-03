@@ -139,6 +139,12 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
                 opacity * original_image[:, :, c]
             )
     
+    # Inicializar variables para la posición de la imagen del personaje
+    char_y = 120
+    char_new_height = 0
+    char_x = 0
+    char_new_width = 0
+    
     # Cargar y mostrar imagen del personaje
     if os.path.exists(image_path):
         character_img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -172,33 +178,54 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
                     )
             else:
                 screen[char_y:char_y+char_new_height, char_x:char_x+char_new_width] = character_resized[:, :, :3]
+            
+            # Si la imagen es LingoBien, mostrar "¡Muy Bien!" debajo automáticamente
+            if "LingoBien" in image_path and message_text is None:
+                message_text = "¡Muy Bien!"
     
-    # Dibujar mensaje de texto si se proporciona
-    if message_text:
+    # Dibujar mensaje de texto si se proporciona (pero NO para LingoBien, se dibuja después del confetti)
+    if message_text and "LingoBien" not in image_path:
         font_message = cv2.FONT_HERSHEY_DUPLEX
         font_scale_message = 1.5
         thickness_message = 3
-        text_size_message, _ = cv2.getTextSize(message_text, font_message, font_scale_message, thickness_message)
-        text_x_message = (view_width - text_size_message[0]) // 2
-        # Posicionar el mensaje debajo de la imagen del personaje
-        text_y_message = 120 + int(view_height * 0.4) + 60
         
-        # Dibujar fondo para el mensaje
-        padding = 20
-        cv2.rectangle(screen, 
-                     (text_x_message - padding, text_y_message - text_size_message[1] - padding),
-                     (text_x_message + text_size_message[0] + padding, text_y_message + padding),
-                     (0, 0, 0), -1)
-        cv2.rectangle(screen,
-                     (text_x_message - padding, text_y_message - text_size_message[1] - padding),
-                     (text_x_message + text_size_message[0] + padding, text_y_message + padding),
-                     (255, 255, 255), 2)
+        # Calcular posición del mensaje debajo de la imagen del personaje
+        # Para LingoBien, poner el texto más cerca de la imagen
+        if "LingoBien" in image_path and char_new_height > 0:
+            # Para LingoBien, calcular posición basada en la imagen del personaje
+            # Reducir la distancia a 20 píxeles para que esté más cerca
+            message_y = char_y + char_new_height + 20  # 20 píxeles abajo de la imagen
+            message_color = (0, 255, 0)  # Verde como en historias
+        else:
+            # Para otros mensajes, usar la posición original
+            message_y = 120 + int(view_height * 0.4) + 60
+            message_color = (255, 255, 255)  # Blanco para otros mensajes
         
-        # Dibujar texto del mensaje
-        put_text_safe(screen, message_text, (text_x_message + 2, text_y_message + 2),
-                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1)  # Sombra negra
-        put_text_safe(screen, message_text, (text_x_message, text_y_message),
-                     font_message, font_scale_message, (255, 255, 255), thickness_message)  # Texto blanco
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font_ubuntu = get_ubuntu_font(font_scale=font_scale_message, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), message_text, font=font_ubuntu)
+                message_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox(message_text) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                message_width = bbox[2] - bbox[0]
+        except:
+            text_size_message, _ = cv2.getTextSize(message_text, font_message, font_scale_message, thickness_message)
+            message_width = text_size_message[0]
+        
+        # Centrar texto horizontalmente
+        message_x = (view_width - message_width) // 2
+        
+        # Dibujar texto con sombra (mismo estilo que historias)
+        put_text_safe(screen, message_text, (message_x + 2, message_y + 2),
+                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1, bold=True)  # Sombra negra
+        put_text_safe(screen, message_text, (message_x, message_y),
+                     font_message, font_scale_message, message_color, thickness_message, bold=True)  # Texto con color
     
     # Dibujar dos botones: "Salir" (izquierda) y "Siguiente" (derecha)
     button_width = 250
@@ -284,9 +311,48 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
     put_text_safe(screen, button_siguiente_text, (text_x_siguiente, text_y_button), 
                font_button, font_scale_button, (255, 255, 255), thickness_button, bold=True)
     
-    # Draw confetti on screen if enabled
+    # Draw confetti on screen if enabled (ANTES del texto para que el texto quede encima)
     if show_confetti and confetti_system is not None:
         confetti_system.draw(screen)
+    
+    # Dibujar el mensaje "¡Muy Bien!" DESPUÉS del confetti para que quede visible encima
+    # Asegurarse de dibujar el texto siempre que sea LingoBien, incluso si message_text es None
+    if "LingoBien" in image_path and char_new_height > 0:
+        # Usar "¡Muy Bien!" como texto siempre
+        texto_a_dibujar = "¡Muy Bien!"
+        # Re-dibujar el texto "Muy bien" encima del confetti
+        font_message = cv2.FONT_HERSHEY_DUPLEX
+        font_scale_message = 1.5
+        thickness_message = 3
+        message_color = (0, 255, 0)  # Verde como en historias
+        message_y = char_y + char_new_height + 20  # 20 píxeles abajo de la imagen
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+        try:
+            from PIL import Image, ImageDraw
+            from src.core.font_utils import get_ubuntu_font
+            font_ubuntu = get_ubuntu_font(font_scale=font_scale_message, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto_a_dibujar, font=font_ubuntu)
+                message_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox(texto_a_dibujar) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                message_width = bbox[2] - bbox[0]
+        except:
+            text_size_message, _ = cv2.getTextSize(texto_a_dibujar, font_message, font_scale_message, thickness_message)
+            message_width = text_size_message[0]
+        
+        # Centrar texto horizontalmente basado en la posición de la imagen LingoBien
+        # Usar el centro de la imagen como referencia y mover más a la izquierda
+        message_x = char_x + (char_new_width - message_width) // 2 - 80
+        
+        # Dibujar texto con sombra (mismo estilo que historias) - DESPUÉS del confetti
+        put_text_safe(screen, texto_a_dibujar, (message_x + 2, message_y + 2),
+                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1, bold=True)  # Sombra negra
+        put_text_safe(screen, texto_a_dibujar, (message_x, message_y),
+                     font_message, font_scale_message, message_color, thickness_message, bold=True)  # Texto verde
     
     return (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, 
             text_x_salir, text_x_siguiente, text_y_button, font_button, font_scale_button, thickness_button)
@@ -679,21 +745,16 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         card_x = img_x - card_padding
         card_y = img_y - card_padding
         
-        # Dibujar sombra de la card (múltiples capas para efecto suave)
+        # Dibujar sombra simple de la card (sin efectos de relieve, solo sombra)
         shadow_offset = 8
-        shadow_layers = 5
-        for i in range(shadow_layers, 0, -1):
-            shadow_alpha = i / shadow_layers * 0.3
-            shadow_color = tuple(int(c * shadow_alpha) for c in (0, 0, 0))
-            offset = shadow_offset + (shadow_layers - i)
-            # Dibujar rectángulo redondeado con sombra
-            cv2.rectangle(
-                videobeam_screen,
-                (card_x + offset, card_y + offset),
-                (card_x + card_width + offset, card_y + card_height + offset),
-                shadow_color,
-                -1
-            )
+        shadow_color = (40, 40, 40)  # Gris oscuro para la sombra
+        cv2.rectangle(
+            videobeam_screen,
+            (card_x + shadow_offset, card_y + shadow_offset),
+            (card_x + card_width + shadow_offset, card_y + card_height + shadow_offset),
+            shadow_color,
+            -1
+        )
         
         # Dibujar card blanca (fondo de la imagen)
         card_color = (255, 255, 255)  # Blanco
@@ -703,17 +764,6 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
             (card_x + card_width, card_y + card_height),
             card_color,
             -1
-        )
-        
-        # Dibujar borde de la card (sutil)
-        border_color = (220, 220, 220)  # Gris claro
-        border_thickness = 3
-        cv2.rectangle(
-            videobeam_screen,
-            (card_x, card_y),
-            (card_x + card_width, card_y + card_height),
-            border_color,
-            border_thickness
         )
         
         # Dibujar imagen encima de la card (manejar transparencia si existe)

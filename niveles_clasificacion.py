@@ -553,25 +553,32 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
             nivel_num = nombre
             texto_nivel = f"{nivel_num} escenario" if nivel_num == "1" else f"{nivel_num} escenarios"
             font_nivel = cv2.FONT_HERSHEY_DUPLEX
-            font_scale_nivel = 0.9
-            thickness_nivel = 2
+            # Tamaño fijo y único - sin ajustes automáticos - MUY GRANDE
+            font_scale_nivel = 5.0
+            thickness_nivel = 8
             
-            # Calcular el ancho disponible
-            available_width = w_scaled - 40
+            # Calcular el tamaño del texto con el tamaño fijo
+            nivel_size, baseline = cv2.getTextSize(texto_nivel, font_nivel, font_scale_nivel, thickness_nivel)
             
-            # Verificar si el texto cabe
-            nivel_size, _ = cv2.getTextSize(texto_nivel, font_nivel, font_scale_nivel, thickness_nivel)
-            while nivel_size[0] > available_width and font_scale_nivel > 0.5:
-                font_scale_nivel -= 0.1
-                nivel_size, _ = cv2.getTextSize(texto_nivel, font_nivel, font_scale_nivel, thickness_nivel)
-            
-            # Calcular posición del texto (centrado horizontalmente, en la parte inferior de la card)
+            # Calcular posición del texto (centrado horizontalmente y verticalmente en la parte inferior de la card)
             nivel_x = x_scaled + (w_scaled - nivel_size[0]) // 2
-            nivel_y = y_scaled + int(320 * scale_factor)  # Posición en la parte inferior de la card
+            # Posición en la parte inferior de la card, con margen
+            nivel_y = y_scaled + h_scaled - 30  # 30 píxeles desde el fondo
+            
+            # Dibujar fondo semi-transparente para el texto para mejor visibilidad
+            padding = 10
+            cv2.rectangle(screen, 
+                         (nivel_x - padding, nivel_y - nivel_size[1] - padding),
+                         (nivel_x + nivel_size[0] + padding, nivel_y + baseline + padding),
+                         (0, 0, 0), -1)
+            cv2.rectangle(screen, 
+                         (nivel_x - padding, nivel_y - nivel_size[1] - padding),
+                         (nivel_x + nivel_size[0] + padding, nivel_y + baseline + padding),
+                         (255, 255, 255), 2)
             
             # Dibujar sombra del texto
-            cv2.putText(screen, texto_nivel, (nivel_x + 2, nivel_y + 2), 
-                       font_nivel, font_scale_nivel, (0, 0, 0), thickness_nivel + 1)
+            cv2.putText(screen, texto_nivel, (nivel_x + 3, nivel_y + 3), 
+                       font_nivel, font_scale_nivel, (0, 0, 0), thickness_nivel + 2)
             # Dibujar texto principal (blanco)
             cv2.putText(screen, texto_nivel, (nivel_x, nivel_y), 
                        font_nivel, font_scale_nivel, (255, 255, 255), thickness_nivel)

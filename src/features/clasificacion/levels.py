@@ -478,21 +478,23 @@ def mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_
             nivel_num = nombre
             texto_nivel = f"{nivel_num} escenario" if nivel_num == "1" else f"{nivel_num} escenarios"
             font_nivel = cv2.FONT_HERSHEY_DUPLEX
-            font_scale_nivel = 0.9
-            thickness_nivel = 2
+            font_scale_nivel = 1.4  # Un poco más grande que el original (0.9)
+            thickness_nivel = 3  # Un poco más grueso
             
             # Calcular el ancho disponible
             available_width = w_scaled - 40
             
-            # Verificar si el texto cabe
+            # Verificar si el texto cabe (permitir que sea más grande antes de reducir)
             nivel_size, _ = cv2.getTextSize(texto_nivel, font_nivel, font_scale_nivel, thickness_nivel)
-            while nivel_size[0] > available_width and font_scale_nivel > 0.5:
+            while nivel_size[0] > available_width and font_scale_nivel > 1.0:
                 font_scale_nivel -= 0.1
                 nivel_size, _ = cv2.getTextSize(texto_nivel, font_nivel, font_scale_nivel, thickness_nivel)
             
-            # Calcular posición del texto (centrado horizontalmente, en la parte inferior de la card)
-            nivel_x = x_scaled + (w_scaled - nivel_size[0]) // 2
-            nivel_y = y_scaled + int(320 * scale_factor)  # Posición en la parte inferior de la card
+            # Calcular posición del texto (centrado horizontalmente y verticalmente en la card)
+            # Ajustar el centrado moviendo más a la derecha
+            nivel_x = x_scaled + (w_scaled - nivel_size[0]) // 2 + 60  # Centrado con offset mayor hacia la derecha
+            # Mover un poco más arriba (aumentar el margen inferior de 30 a 50)
+            nivel_y = y_scaled + h_scaled - 50  # Posición un poco más arriba, bien centrado
             
             # Dibujar sombra del texto
             put_text_ubuntu(screen, texto_nivel, (nivel_x + 2, nivel_y + 2), 
@@ -3157,6 +3159,39 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                 else:
                     # Si no tiene alpha, copiar directamente
                     overlay[y1:y2, x1:x2] = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
+                
+                # Dibujar texto "¡Muy Bien!" debajo de la imagen (mismo estilo que historias)
+                message_text = "¡Muy Bien!"
+                message_font_scale = 1.5
+                message_thickness = 3
+                message_color = (0, 255, 0)  # Verde como en historias
+                message_y = y2 + 40  # 40 píxeles abajo de la imagen
+                
+                # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+                try:
+                    from PIL import Image, ImageDraw
+                    from src.core.font_utils import get_ubuntu_font
+                    font_ubuntu = get_ubuntu_font(font_scale=message_font_scale, bold=True)
+                    img_pil = Image.fromarray(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
+                    draw = ImageDraw.Draw(img_pil)
+                    try:
+                        bbox = draw.textbbox((0, 0), message_text, font=font_ubuntu)
+                        message_width = bbox[2] - bbox[0]
+                    except AttributeError:
+                        bbox = font_ubuntu.getbbox(message_text) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                        message_width = bbox[2] - bbox[0]
+                except:
+                    message_size, _ = cv2.getTextSize(message_text, cv2.FONT_HERSHEY_DUPLEX, message_font_scale, message_thickness)
+                    message_width = message_size[0]
+                
+                # Centrar texto horizontalmente
+                message_x = (view_width - message_width) // 2
+                
+                # Dibujar texto con sombra (mismo estilo que historias)
+                put_text_ubuntu(overlay, message_text, (message_x + 2, message_y + 2),
+                              message_font_scale, (0, 0, 0), message_thickness + 1, bold=True)  # Sombra negra
+                put_text_ubuntu(overlay, message_text, (message_x, message_y),
+                              message_font_scale, message_color, message_thickness, bold=True)  # Texto verde
                 
                 # Dibujar botones arriba de la imagen
                 button_height = 80

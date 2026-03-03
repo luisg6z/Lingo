@@ -134,6 +134,12 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
                 opacity * original_image[:, :, c]
             )
     
+    # Inicializar variables para la posición de la imagen del personaje
+    char_y = 120
+    char_new_height = 0
+    char_x = 0
+    char_new_width = 0
+    
     # Cargar y mostrar imagen del personaje
     if os.path.exists(image_path):
         character_img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
@@ -167,9 +173,13 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
                     )
             else:
                 screen[char_y:char_y+char_new_height, char_x:char_x+char_new_width] = character_resized[:, :, :3]
+            
+            # Si la imagen es LingoBien, mostrar "¡Muy Bien!" debajo automáticamente
+            if "LingoBien" in image_path and message_text is None:
+                message_text = "¡Muy Bien!"
     
-    # Dibujar mensaje de texto si se proporciona
-    if message_text:
+    # Dibujar mensaje de texto si se proporciona (pero NO para LingoBien, se dibuja después del confetti)
+    if message_text and "LingoBien" not in image_path:
         font_message = cv2.FONT_HERSHEY_DUPLEX
         font_scale_message = 1.5
         thickness_message = 3
@@ -250,9 +260,47 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
         shadow=False
     )
     
-    # Draw confetti on screen if enabled
+    # Draw confetti on screen if enabled (ANTES del texto para que el texto quede encima)
     if show_confetti and confetti_system is not None:
         confetti_system.draw(screen)
+    
+    # Dibujar el mensaje "¡Muy Bien!" DESPUÉS del confetti para que quede visible encima
+    # Asegurarse de dibujar el texto siempre que sea LingoBien, incluso si message_text es None
+    if "LingoBien" in image_path and char_new_height > 0:
+        # Usar "¡Muy Bien!" como texto si no se proporcionó uno
+        texto_a_dibujar = "¡Muy Bien!"
+        # Re-dibujar el texto "Muy bien" encima del confetti
+        font_message = cv2.FONT_HERSHEY_DUPLEX
+        font_scale_message = 1.5
+        thickness_message = 3
+        message_color = (0, 255, 0)  # Verde como en historias
+        message_y = char_y + char_new_height + 20  # 20 píxeles abajo de la imagen
+        
+        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+        try:
+            from PIL import Image, ImageDraw
+            font_ubuntu = get_ubuntu_font(font_scale=font_scale_message, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            try:
+                bbox = draw.textbbox((0, 0), texto_a_dibujar, font=font_ubuntu)
+                message_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font_ubuntu.getbbox(texto_a_dibujar) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                message_width = bbox[2] - bbox[0]
+        except:
+            text_size_message, _ = cv2.getTextSize(texto_a_dibujar, font_message, font_scale_message, thickness_message)
+            message_width = text_size_message[0]
+        
+        # Centrar texto horizontalmente basado en la posición de la imagen LingoBien
+        # Usar el centro de la imagen como referencia y mover más a la izquierda
+        message_x = char_x + (char_new_width - message_width) // 2 - 80
+        
+        # Dibujar texto con sombra (mismo estilo que historias) - DESPUÉS del confetti
+        put_text_safe(screen, texto_a_dibujar, (message_x + 2, message_y + 2),
+                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1, bold=True)  # Sombra negra
+        put_text_safe(screen, texto_a_dibujar, (message_x, message_y),
+                     font_message, font_scale_message, message_color, thickness_message, bold=True)  # Texto verde
     
     return (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, 
             salir_button_bounds, siguiente_button_bounds)
@@ -469,15 +517,34 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
     # Variable para controlar si es la primera imagen (solo TTS en la primera)
     primera_imagen = True
     
+    # Lista para rastrear los absurdos ya mostrados (usando el nombre de la imagen como identificador único)
+    absurdos_mostrados = []
+    
     # Bucle principal del juego - continuar hasta que el usuario presione "Volver al Menú"
     while True:
         # Reconfigurar ventana en cada iteración para asegurar tamaño correcto
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.resizeWindow(window_name, VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT)
         
-        # Seleccionar un absurdo aleatorio
-        absurdo_actual = random.choice(absurdos_list)
+        # Filtrar absurdos disponibles (excluir los ya mostrados)
+        absurdos_disponibles = [
+            absurdo for absurdo in absurdos_list 
+            if absurdo.get("imagen", "") not in absurdos_mostrados
+        ]
+        
+        # Si todos los absurdos han sido mostrados, reiniciar la lista
+        if not absurdos_disponibles:
+            print("Todos los absurdos han sido mostrados. Reiniciando lista...")
+            absurdos_mostrados = []
+            absurdos_disponibles = absurdos_list
+        
+        # Seleccionar un absurdo aleatorio de los disponibles
+        absurdo_actual = random.choice(absurdos_disponibles)
         imagen_nombre = absurdo_actual.get("imagen", "")
+        
+        # Agregar el absurdo actual a la lista de mostrados
+        if imagen_nombre:
+            absurdos_mostrados.append(imagen_nombre)
         
         # Construir ruta de imagen
         assets_path = "absurdos-visuales/absurdos_logicos/assets"
@@ -618,6 +685,34 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         
         # Centrar horizontalmente
         img_x = (view_width - new_width) // 2
+        
+        # Calcular dimensiones de la card (con padding alrededor de la imagen)
+        card_padding = 20  # Espacio alrededor de la imagen dentro de la card
+        card_width = new_width + (card_padding * 2)
+        card_height = new_height + (card_padding * 2)
+        card_x = img_x - card_padding
+        card_y = img_y - card_padding
+        
+        # Dibujar sombra simple de la card (sin efectos de relieve, solo sombra)
+        shadow_offset = 8
+        shadow_color = (40, 40, 40)  # Gris oscuro para la sombra
+        cv2.rectangle(
+            videobeam_screen,
+            (card_x + shadow_offset, card_y + shadow_offset),
+            (card_x + card_width + shadow_offset, card_y + card_height + shadow_offset),
+            shadow_color,
+            -1
+        )
+        
+        # Dibujar card blanca (fondo de la imagen)
+        card_color = (255, 255, 255)  # Blanco
+        cv2.rectangle(
+            videobeam_screen,
+            (card_x, card_y),
+            (card_x + card_width, card_y + card_height),
+            card_color,
+            -1
+        )
         
         # Dibujar imagen (manejar transparencia si existe)
         if len(imagen_resized.shape) == 3 and imagen_resized.shape[2] == 4:

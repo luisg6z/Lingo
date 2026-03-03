@@ -1,0 +1,63 @@
+2026-02-28 18:28:38,294 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-02-28 18:28:38,295 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-02-28 18:29:00,447 - absurdos_visuales_game - WARNING - Usuario falló con respuesta incorrecta. Imagen: almohada-piedra.png, Respuesta correcta: False
+2026-02-28 18:33:46,246 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-02-28 18:33:46,258 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-02-28 18:34:19,929 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: sopa-con-tenedor.png, Intentos restantes: 0, Respuesta correcta: False
+2026-02-28 18:38:23,420 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-02-28 18:38:23,421 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-02-28 18:38:55,524 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: tele-en-nevera.png, Intentos restantes: 0, Respuesta correcta: False
+2026-02-28 18:44:18,539 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-02-28 18:44:18,540 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-02-28 18:44:59,874 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: zapato-plato.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-02 13:33:04,865 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:33:04,866 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:37:16,419 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:37:16,419 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:39:50,246 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:39:50,248 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:43:19,013 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:43:19,014 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:45:24,800 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:45:24,801 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:47:25,290 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:47:25,291 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:48:20,384 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:48:20,385 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:49:31,936 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:49:31,937 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:51:43,713 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:51:43,714 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:53:07,491 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:53:07,492 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:54:15,008 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:54:15,009 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 13:56:36,833 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 13:56:36,834 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 14:06:31,770 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-02 14:06:31,771 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-02 14:09:22,669 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-03-03 11:44:27,157 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-03-03 11:44:27,158 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-03 11:44:27,180 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-03-03 11:44:27,181 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-03-03 11:44:28,187 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-03-03 11:44:28,187 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-03 11:44:28,210 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-03-03 11:44:28,211 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-03-03 11:44:31,215 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-03-03 11:44:31,216 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-03 11:44:31,240 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-03-03 11:44:31,241 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-03-03 11:44:36,245 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-03-03 11:44:36,246 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-03-03 11:44:36,273 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-03-03 11:44:36,274 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-03-03 12:16:09,853 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 12:16:09,853 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 12:17:06,072 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 12:17:06,073 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 12:34:41,545 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 12:34:41,546 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 12:37:15,092 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 12:37:15,093 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'

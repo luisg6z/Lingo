@@ -14,6 +14,10 @@ import json
 import math
 import re
 import threading
+
+# Lock para evitar llamadas concurrentes a TTS
+_tts_lock = threading.Lock()
+_tts_engine = None
 import niveles_clasificacion
 from niveles_clasificacion import mostrar_seleccion_niveles_clasificacion
 from absurdos_seleccion import mostrar_seleccion_absurdos
@@ -240,18 +244,42 @@ def _historia_tts_speak(name, tipo=None):
         text = _HISTORIA_TTS_ACCION.get(name, name)
     else:
         text = name
+    
     def _run():
+        # Usar lock para evitar llamadas concurrentes
+        if not _tts_lock.acquire(blocking=False):
+            # Si hay otro TTS ejecutándose, ignorar esta llamada silenciosamente
+            return
+        
+        engine = None
         try:
+            # Crear una nueva instancia del engine para cada llamada
             engine = pyttsx3.init()
             engine.setProperty("rate", 150)
-            for v in engine.getProperty("voices"):
+            voices = engine.getProperty("voices")
+            for v in voices:
                 if "spanish" in v.name.lower() or "español" in v.name.lower():
                     engine.setProperty("voice", v.id)
                     break
             engine.say(text)
             engine.runAndWait()
+        except RuntimeError as e:
+            # Ignorar errores de "run loop already started" silenciosamente
+            if "run loop" not in str(e).lower():
+                print(f"TTS error: {e}")
         except Exception as e:
+            # Solo mostrar otros errores
             print(f"TTS error: {e}")
+        finally:
+            # Intentar detener el engine si existe
+            if engine is not None:
+                try:
+                    engine.stop()
+                except:
+                    pass
+            # Liberar el lock siempre
+            _tts_lock.release()
+    
     t = threading.Thread(target=_run, daemon=True)
     t.start()
 
@@ -4789,6 +4817,16 @@ def mostrar_seleccion_acciones(device, coordenadas, dmax_map, dmin_map, draw_log
                     existing_window_name=window_name
                 )
                 
+                # Si se presionó el botón de retroceso, volver a la vista de acciones (continuar el bucle)
+                if lugares_seleccionados == "BACK":
+                    # Reiniciar streams para volver a la vista de acciones
+                    rgb_stream = device.create_color_stream()
+                    depth_stream = device.create_depth_stream()
+                    rgb_stream.start()
+                    depth_stream.start()
+                    # Continuar en el bucle de acciones (no retornar nada)
+                    continue
+                
                 # Si se canceló (retornó None o "MENU"), retornar None o "MENU"
                 if lugares_seleccionados is None or lugares_seleccionados == "MENU":
                     return lugares_seleccionados
@@ -5266,64 +5304,53 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
             # Determinar si está seleccionada
             is_selected = nombre in selected_cards
             
-            # Efecto de elevación si está seleccionada
-            elevation_offset = 0
-            scale_factor = 1.0
-            shadow_offset_base = 5
-            
-            if is_selected:
-                elevation_offset = -8
-                scale_factor = 1.08
-                shadow_offset_base = 8
-            
-            w_scaled = int(w * scale_factor)
-            h_scaled = int(h * scale_factor)
+            # Efecto visual si está seleccionada: hacer la card más ancha (como en acciones)
+            width_scale = 1.15 if is_selected else 1.0  # 15% más ancha cuando está seleccionada
+            w_scaled = int(w * width_scale)
+            # Centrar la card expandida
             x_scaled = x - (w_scaled - w) // 2
-            y_scaled = y + elevation_offset - (h_scaled - h) // 2
             
             # Asegurar que no se salga de los límites
             x_scaled = max(0, min(x_scaled, screen.shape[1] - w_scaled))
-            y_scaled = max(0, min(y_scaled, screen.shape[0] - h_scaled))
+            
+            # Efecto visual si está seleccionada: borde verde
+            border_color = (0, 255, 0) if is_selected else (100, 100, 100)  # Verde si seleccionada
+            border_thickness = 5 if is_selected else 2
             
             # Dibujar sombra
-            shadow_offset = int(shadow_offset_base * scale_factor)
+            shadow_offset = 8
             shadow_color = (40, 40, 40)
             for i in range(3, 0, -1):
                 shadow_alpha = i / 3.0
                 shadow_color_layer = tuple(int(c * shadow_alpha) for c in shadow_color)
                 offset_layer = shadow_offset + (3 - i)
                 cv2.rectangle(screen, 
-                            (x_scaled + offset_layer, y_scaled + offset_layer), 
-                            (x_scaled + w_scaled + offset_layer, y_scaled + h_scaled + offset_layer), 
+                            (x_scaled + offset_layer, y + offset_layer), 
+                            (x_scaled + w_scaled + offset_layer, y + h + offset_layer), 
                             shadow_color_layer, -1)
             
-            # Color del borde (verde si está seleccionada)
-            border_color = (0, 255, 0) if is_selected else (100, 100, 100)
-            border_thickness = 5 if is_selected else 2
-            
-            # Dibujar la card
+            # Dibujar la imagen como fondo completo de la card si existe
             if img is not None:
-                # Redimensionar imagen para que quepa en la card
-                img_resized = cv2.resize(img, (w_scaled, h_scaled), interpolation=cv2.INTER_AREA)
+                img_resized = cv2.resize(img, (w_scaled, h), interpolation=cv2.INTER_AREA)
                 
-                # Si la imagen tiene canal alpha, compositar
-                if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
-                    # Con transparencia
-                    alpha = img_resized[:, :, 3] / 255.0
-                    img_bgr = img_resized[:, :, :3]
-                    for c in range(3):
-                        screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c] = (
-                            alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled, c]
-                        )
-                else:
-                    # Sin transparencia
-                    screen[y_scaled:y_scaled+h_scaled, x_scaled:x_scaled+w_scaled] = img_resized[:, :, :3]
+                if x_scaled >= 0 and y >= 0 and x_scaled + w_scaled <= screen.shape[1] and y + h <= screen.shape[0]:
+                    if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
+                        # Con transparencia
+                        alpha = img_resized[:, :, 3] / 255.0
+                        img_bgr = img_resized[:, :, :3]
+                        for c in range(3):
+                            screen[y:y+h, x_scaled:x_scaled+w_scaled, c] = (
+                                alpha * img_bgr[:, :, c] + (1 - alpha) * screen[y:y+h, x_scaled:x_scaled+w_scaled, c]
+                            )
+                    else:
+                        # Sin transparencia
+                        screen[y:y+h, x_scaled:x_scaled+w_scaled] = img_resized[:, :, :3]
             else:
                 # Si no hay imagen, dibujar card con color
-                cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), color, -1)
+                cv2.rectangle(screen, (x_scaled, y), (x_scaled + w_scaled, y + h), color, -1)
             
             # Dibujar borde (verde si está seleccionada)
-            cv2.rectangle(screen, (x_scaled, y_scaled), (x_scaled + w_scaled, y_scaled + h_scaled), border_color, border_thickness)
+            cv2.rectangle(screen, (x_scaled, y), (x_scaled + w_scaled, y + h), border_color, border_thickness)
     
     # Función para dibujar el botón "Jugar"
     def draw_jugar_button(screen, elevated=False, blocked=False):
@@ -6453,31 +6480,88 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     draw_logo_func(trans_screen)
     tit = "Tu historia:"
     _put_text_safe_historia(trans_screen, tit, (50, 120), font, 0.8, (255, 255, 255), 2)
-    for i in range(1, len(text) + 1):
+    
+    # Aumentar tamaño de la transcripción
+    font_scale = 1.2  # Aumentado de 1.0 a 1.2 para texto más grande
+    thickness = 3
+    y_pos = 180
+    max_width = view_width - 100
+    
+    # Usar PIL para medir texto correctamente y evitar cortes en medio de palabras
+    try:
+        from PIL import Image, ImageDraw
+        from src.core.font_utils import get_ubuntu_font
+        font_ubuntu = get_ubuntu_font(font_scale=font_scale, bold=False)
+        use_pil = True
+    except:
+        use_pil = False
+    
+    # Dividir texto en palabras para animación tipo typewriter sin cortar palabras
+    words = text.split() if text else []
+    
+    for i in range(1, len(words) + 1):
         trans_screen = _gradient_screen()
         draw_logo_func(trans_screen)
         _put_text_safe_historia(trans_screen, tit, (50, 120), font, 0.8, (255, 255, 255), 2)
-        # Word wrap: draw text[:i] in a box
-        line = text[:i]
-        font_scale = 0.7
-        thickness = 2
-        y_pos = 180
-        max_width = view_width - 100
-        words = line.split()
-        line_cur = ""
-        for w in words:
-            test = line_cur + (" " if line_cur else "") + w
-            (tw, th), _ = cv2.getTextSize(test, font, font_scale, thickness)
-            if tw > max_width and line_cur:
-                _put_text_safe_historia(trans_screen, line_cur, (50, y_pos), font, font_scale, (255, 255, 255), thickness)
-                y_pos += 35
-                line_cur = w
-            else:
-                line_cur = test
-        if line_cur:
-            _put_text_safe_historia(trans_screen, line_cur, (50, y_pos), font, font_scale, (255, 255, 255), thickness)
+        
+        # Construir texto hasta la palabra i-ésima (sin cortar palabras)
+        current_words = words[:i]
+        display_text = " ".join(current_words)
+        
+        # Word wrap usando PIL para medición precisa
+        x_start = 50
+        y_current = y_pos
+        line_height = int(font_scale * 40)  # Espacio entre líneas basado en tamaño de fuente
+        
+        if use_pil:
+            # Usar PIL para medir y dibujar con word wrapping preciso
+            img_pil = Image.fromarray(cv2.cvtColor(trans_screen, cv2.COLOR_BGR2RGB))
+            draw_pil = ImageDraw.Draw(img_pil)
+            
+            # Dividir en palabras y construir líneas
+            words_to_draw = display_text.split()
+            current_line = ""
+            
+            for word in words_to_draw:
+                test_line = current_line + (" " if current_line else "") + word
+                try:
+                    bbox = draw_pil.textbbox((0, 0), test_line, font=font_ubuntu)
+                    text_width = bbox[2] - bbox[0]
+                except AttributeError:
+                    bbox = font_ubuntu.getbbox(test_line) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                    text_width = bbox[2] - bbox[0]
+                
+                if text_width > max_width and current_line:
+                    # Dibujar línea actual y pasar a la siguiente
+                    _put_text_safe_historia(trans_screen, current_line, (x_start, y_current), font, font_scale, (255, 255, 255), thickness)
+                    y_current += line_height
+                    current_line = word
+                else:
+                    current_line = test_line
+            
+            # Dibujar última línea si hay contenido
+            if current_line:
+                _put_text_safe_historia(trans_screen, current_line, (x_start, y_current), font, font_scale, (255, 255, 255), thickness)
+        else:
+            # Fallback a método anterior si PIL no está disponible
+            line_cur = ""
+            for w in current_words:
+                test = line_cur + (" " if line_cur else "") + w
+                (tw, th), _ = cv2.getTextSize(test, font, font_scale, thickness)
+                if tw > max_width and line_cur:
+                    _put_text_safe_historia(trans_screen, line_cur, (x_start, y_current), font, font_scale, (255, 255, 255), thickness)
+                    y_current += line_height
+                    line_cur = w
+                else:
+                    line_cur = test
+            if line_cur:
+                _put_text_safe_historia(trans_screen, line_cur, (x_start, y_current), font, font_scale, (255, 255, 255), thickness)
+        
         cv2.imshow(window_name, scale_to_videobeam(trans_screen))
-        cv2.waitKey(max(20, 400 // max(len(text), 1)))
+        # Hacer la animación más lenta: esperar más tiempo entre palabras
+        # Esperar al menos 100ms por palabra, con un mínimo de 50ms
+        wait_time = max(50, min(150, 800 // max(len(words), 1)))
+        cv2.waitKey(wait_time)
     cv2.waitKey(800)
 
     # 3) Thinking indicator + Ollama
@@ -6537,11 +6621,20 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     if result.get("correct", False):
         confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
         confetti_system.start(multiple_bursts=True, num_burst_points=3)
+    # Acelerar confetti en historias (en otros juegos se percibe más rápido por mayor FPS)
+    confetti_speed_mult = 4  # Aumentado de 2 a 4 para hacer el confetti más rápido
 
-    # 4) Result screen: LingoBien + sentence (highlighted) + tips + X
-    lingo_path = os.path.join(project_root, "images", "LingoBien.png")
-    if not os.path.exists(lingo_path):
-        lingo_path = "images/LingoBien.png"
+    # 4) Result screen: LingoBien/LingoMal + sentence (highlighted) + tips + X
+    # Cargar logo según si la historia es correcta o no
+    is_correct = result.get("correct", False)
+    if is_correct:
+        lingo_path = os.path.join(project_root, "images", "LingoBien.png")
+        if not os.path.exists(lingo_path):
+            lingo_path = "images/LingoBien.png"
+    else:
+        lingo_path = os.path.join(project_root, "images", "LingoMal.png")
+        if not os.path.exists(lingo_path):
+            lingo_path = "images/LingoMal.png"
     lingo_img = cv2.imread(lingo_path, cv2.IMREAD_UNCHANGED) if os.path.exists(lingo_path) else None
 
     xw_min = coordenadas["xw_min"]
@@ -6561,16 +6654,24 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
             b = int(255 * (0.8 - 0.3 * ratio))
             screen[y, :] = [b, g, r]
         draw_logo_func(screen)
-        # LingoBien
+        # LingoBien/LingoMal (más pequeño, LingoMal aún más pequeño)
         if lingo_img is not None:
             h_img, w_img = lingo_img.shape[:2]
-            max_h = 220
+            # LingoMal más pequeño que LingoBien
+            if not is_correct:
+                max_h = 100  # LingoMal más pequeño: 100 píxeles (reducido de 120)
+            else:
+                max_h = 150  # LingoBien: 150 píxeles
             scale = max_h / h_img
             w_new = int(w_img * scale)
             h_new = int(h_img * scale)
             resized = cv2.resize(lingo_img, (w_new, h_new), interpolation=cv2.INTER_AREA)
             lx = (view_width - w_new) // 2
-            ly = 140
+            # Ajustar posición vertical según si es LingoBien o LingoMal
+            if not is_correct:
+                ly = 140  # LingoMal más abajo (de 120 a 140) para evitar choque con el logo
+            else:
+                ly = 120  # LingoBien en posición normal
             if len(resized.shape) == 3 and resized.shape[2] == 4:
                 alpha = resized[:, :, 3] / 255.0
                 for c in range(3):
@@ -6579,11 +6680,12 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
             else:
                 screen[ly:ly + h_new, lx:lx + w_new] = resized[:, :, :3]
         
-        # Sentence with highlights (word-by-word with line wrap) and underlines for parts
+        # Sentence with highlights (word-by-word with line wrap) and styling for parts
         display_text = text if text else "No se pudo entender. Intenta de nuevo."
-        y_pos = 400
-        font_scale = 0.65
-        thickness = 2
+        y_pos = 350  # Bajado de 320 a 350 para dar más espacio y bajar el texto
+        # Aumentar tamaño de la transcripción (NO tocar el tamaño de "Consejos")
+        font_scale = 1.0  # Aumentado de 0.8 a 1.0 para texto más grande
+        thickness = 3
         max_width = view_width - 80
         
         # Get parts from result
@@ -6605,15 +6707,13 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                     return True
             return False
         
-        # Colors for different parts
-        subject_color = (0, 0, 255)  # Red (BGR)
-        action_color = (0, 255, 0)  # Green (BGR)
-        predicate_color = (255, 0, 0)  # Blue (BGR)
+        # Colors for different parts (BGR)
+        subject_color = (0, 0, 255)  # Rojo: Sujeto
+        predicate_color = (255, 0, 0)  # Azul: Predicado
+        verb_color = (255, 120, 0)  # Azul distinto: Verbo (más claro/cian)
         
         # Calculate word positions using utility function
         word_positions_data = calculate_word_positions(display_text, 40, y_pos, font_scale, max_width, bold=False)
-        
-        required_set = set(required_words)
         
         # Function to match phrases (multi-word sequences) and single words in the text
         def find_phrase_positions(phrase_list, word_positions_data):
@@ -6627,10 +6727,12 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                 # Handle single word
                 if len(phrase_words) == 1:
                     phrase_norm = normalize_word(phrase_words[0])
-                    for wp_data in word_positions_data:
+                    for idx, wp_data in enumerate(word_positions_data):
                         word_norm = normalize_word(wp_data['word'])
                         if word_norm == phrase_norm or word_norm.startswith(phrase_norm) or phrase_norm.startswith(word_norm):
                             phrase_matches.append({
+                                'start_idx': idx,
+                                'end_idx': idx,
                                 'x_start': wp_data['x_start'],
                                 'x_end': wp_data['x_end'],
                                 'y': wp_data['y'],
@@ -6655,6 +6757,8 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                             start_wp = word_positions_data[i]
                             end_wp = word_positions_data[i + len(phrase_words) - 1]
                             phrase_matches.append({
+                                'start_idx': i,
+                                'end_idx': i + len(phrase_words) - 1,
                                 'x_start': start_wp['x_start'],
                                 'x_end': end_wp['x_end'],
                                 'y': start_wp['y'],  # Use first word's y position
@@ -6676,150 +6780,159 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
             all_phrases.append({**sp, 'is_subject': True, 'is_action': False, 'is_predicate': False})
         for ap in action_phrases:
             # Check if this phrase is already in the list (might overlap with subject/predicate)
-            existing = next((p for p in all_phrases if p['x_start'] == ap['x_start'] and p['x_end'] == ap['x_end']), None)
+            existing = next((p for p in all_phrases if p.get('start_idx') == ap.get('start_idx') and p.get('end_idx') == ap.get('end_idx')), None)
             if existing:
                 existing['is_action'] = True
             else:
                 all_phrases.append({**ap, 'is_subject': False, 'is_action': True, 'is_predicate': False})
         for pp in predicate_phrases:
-            existing = next((p for p in all_phrases if p['x_start'] == pp['x_start'] and p['x_end'] == pp['x_end']), None)
+            existing = next((p for p in all_phrases if p.get('start_idx') == pp.get('start_idx') and p.get('end_idx') == pp.get('end_idx')), None)
             if existing:
                 existing['is_predicate'] = True
             else:
                 all_phrases.append({**pp, 'is_subject': False, 'is_action': False, 'is_predicate': True})
         
         underline_info = all_phrases
-        
-        # Draw action highlights FIRST (before text, so text appears on top)
-        for ui in underline_info:
-            if ui['is_action']:
-                x_start = ui['x_start']
-                x_end = ui['x_end']
-                y_text = ui['y']
-                
-                # Calculate text height for highlight
-                try:
-                    from PIL import Image, ImageDraw
-                    from src.core.font_utils import get_ubuntu_font
-                    font_ubuntu = get_ubuntu_font(font_scale=font_scale, bold=False)
-                    img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
-                    draw = ImageDraw.Draw(img_pil)
-                    try:
-                        bbox = draw.textbbox((0, 0), "Ag", font=font_ubuntu)
-                        word_height = bbox[3] - bbox[1]
-                    except AttributeError:
-                        bbox = font_ubuntu.getbbox("Ag") if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 20)
-                        word_height = bbox[3] - bbox[1]
-                except:
-                    (_, word_height), baseline = cv2.getTextSize("Ag", font, font_scale, thickness)
-                    word_height = word_height + baseline
-                
-                # Draw highlight rectangle behind the text
-                highlight_y_top = y_text - word_height + 2  # Slight padding
-                highlight_y_bottom = y_text + 2
-                highlight_color = action_color
-                # Draw semi-transparent highlight
-                overlay = screen.copy()
-                cv2.rectangle(overlay, (x_start, highlight_y_top), (x_end, highlight_y_bottom), highlight_color, -1)
-                cv2.addWeighted(overlay, 0.3, screen, 0.7, 0, screen)
-        
-        # Draw text AFTER highlights
-        for wp_data in word_positions_data:
-            word = wp_data['word']
-            norm = normalize_word(word)
-            is_required = norm in required_set or any(norm.startswith(rw) or rw.startswith(norm) for rw in required_set)
-            
-            # Text color (white by default, or cyan if it's a required word)
-            text_color = (0, 255, 255) if is_required else (255, 255, 255)
-            
-            # Draw text at calculated position
-            _put_text_safe_historia(screen, word, (wp_data['x_start'], wp_data['y']), font, font_scale, text_color, thickness)
-        
-        # Draw underlines and highlights - positioned lower below the text
-        # First, we need to get the actual text height to position underlines correctly
-        try:
-            from PIL import Image, ImageDraw
-            from src.core.font_utils import get_ubuntu_font
-            font_ubuntu = get_ubuntu_font(font_scale=font_scale, bold=False)
-            img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
-            draw = ImageDraw.Draw(img_pil)
+
+        # --- NUEVO: en la transcripción NO subrayamos, cambiamos color/fuente del texto ---
+        # Marcar palabras por categoría usando índices (para que el predicado marque TODAS las palabras)
+        subject_word_idxs = set()
+        predicate_word_idxs = set()
+        verb_word_idxs = set()
+
+        def _add_range(out_set, start_idx, end_idx):
+            if start_idx is None or end_idx is None:
+                return
             try:
-                bbox = draw.textbbox((0, 0), "Ag", font=font_ubuntu)  # Sample text to get height
-                text_height = bbox[3] - bbox[1]
-            except AttributeError:
-                bbox = font_ubuntu.getbbox("Ag") if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 20)
-                text_height = bbox[3] - bbox[1]
-        except:
-            (_, text_height), baseline = cv2.getTextSize("Ag", font, font_scale, thickness)
-            text_height = text_height + baseline
-        
-        underline_offset = 20# Increased distance from text baseline (lower position)
-        underline_thickness = 3
-        
-        # Draw underlines for subjects and predicates (actions are already highlighted)
+                si = int(start_idx)
+                ei = int(end_idx)
+            except Exception:
+                return
+            if ei < si:
+                si, ei = ei, si
+            for k in range(si, ei + 1):
+                out_set.add(k)
+
         for ui in underline_info:
-            x_start = ui['x_start']
-            x_end = ui['x_end']
-            y_text = ui['y']
-            
-            # Calculate baseline position (y_text is the baseline position from PIL)
-            y_baseline = y_text
-            
-            # Subjects and Predicates: Draw underlines at the same level (no stepping)
-            underline_categories = []
-            if ui['is_subject']:
-                underline_categories.append(('subject', subject_color))
-            if ui['is_predicate']:
-                underline_categories.append(('predicate', predicate_color))
-            
-            # Draw all underlines at the same y position (no stepping)
-            if underline_categories:
-                y_underline = y_baseline + underline_offset
-                for category, color in underline_categories:
-                    cv2.line(screen, (x_start, y_underline), (x_end, y_underline), color, underline_thickness)
-        
-        # Draw legend in bottom right (always show all three categories)
-        legend_x = view_width - 250
-        legend_y = view_height - 120
-        legend_font_scale = 0.5
+            if ui.get("is_subject"):
+                _add_range(subject_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+            if ui.get("is_predicate"):
+                _add_range(predicate_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+            if ui.get("is_action"):
+                _add_range(verb_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+
+        # Fuente alternativa para verbo (otra fuente). Intentar Italic del sistema; fallback a Ubuntu bold.
+        def _get_verb_font(font_scale_local):
+            try:
+                from PIL import ImageFont
+                from src.core.font_utils import get_ubuntu_font_path, get_ubuntu_font
+                base = get_ubuntu_font_path()
+                candidates = []
+                if base:
+                    font_dir = os.path.dirname(base)
+                    candidates.extend([
+                        os.path.join(font_dir, "Ubuntu-Italic.ttf"),
+                        os.path.join(font_dir, "Ubuntu-BoldItalic.ttf"),
+                        os.path.join(font_dir, "Ubuntu-MediumItalic.ttf"),
+                    ])
+                if sys.platform == "win32":
+                    windir = os.environ.get("WINDIR", "C:/Windows")
+                    candidates.extend([
+                        os.path.join(windir, "Fonts", "ariali.ttf"),
+                        os.path.join(windir, "Fonts", "calibrii.ttf"),
+                        os.path.join(windir, "Fonts", "timesi.ttf"),
+                    ])
+                font_size = max(int(22 * font_scale_local), 16)
+                for p in candidates:
+                    if p and os.path.exists(p):
+                        return ImageFont.truetype(p, font_size)
+                return get_ubuntu_font(font_scale=font_scale_local, bold=True)
+            except Exception:
+                return None
+
+        verb_font = _get_verb_font(font_scale)
+
+        def _put_text_with_font_override(img, text_to_draw, position, pil_font, color_bgr):
+            """Dibuja texto con una fuente PIL específica (para 'Verbo')."""
+            try:
+                from PIL import Image, ImageDraw
+                img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                draw = ImageDraw.Draw(img_pil)
+                color_rgb = (color_bgr[2], color_bgr[1], color_bgr[0])
+                draw.text((position[0], position[1]), text_to_draw, fill=color_rgb, font=pil_font)
+                img_result = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+                img[:] = img_result[:]
+            except Exception:
+                _put_text_safe_historia(img, text_to_draw, position, font, font_scale, color_bgr, thickness)
+
+        # Dibujar texto palabra por palabra con color/fuente según categoría
+        # (Quitamos el resaltado "amarillo/cian" de palabras requeridas: solo Sujeto/Verbo/Predicado)
+        for idx, wp_data in enumerate(word_positions_data):
+            word = wp_data["word"]
+
+            is_verb = idx in verb_word_idxs
+            is_subject = idx in subject_word_idxs
+            is_predicate = idx in predicate_word_idxs
+
+            if is_verb:
+                # Verbo: azul distinto con otra fuente
+                if verb_font is not None:
+                    _put_text_with_font_override(screen, word, (wp_data["x_start"], wp_data["y"]), verb_font, verb_color)
+                else:
+                    _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, verb_color, thickness, bold=True)
+            elif is_subject:
+                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, subject_color, thickness)
+            elif is_predicate:
+                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, predicate_color, thickness)
+            else:
+                # Resto del texto en blanco
+                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, (255, 255, 255), thickness)
+
+        # --- Leyenda (sin subrayados): "abc" con color/fuente ---
+        legend_x = view_width - 220  # Movido más a la derecha (de 290 a 220)
+        legend_y = view_height - 130
+        legend_font_scale = 0.55
         legend_thickness = 2
-        legend_line_height = 25
-        
-        # Legend background (semi-transparent) - always show 3 items
+        legend_line_height = 28
+
         legend_bg_height = 3 * legend_line_height + 20
-        legend_bg = np.zeros((legend_bg_height, 240, 3), dtype=np.uint8)
-        legend_bg[:] = (40, 40, 40)  # Dark gray
-        screen[legend_y-10:legend_y-10+legend_bg_height, legend_x-10:legend_x-10+240] = \
-            cv2.addWeighted(screen[legend_y-10:legend_y-10+legend_bg_height, legend_x-10:legend_x-10+240], 0.7, legend_bg, 0.3, 0)
-        
-        legend_y_current = legend_y
-        # Always show all three categories in the legend
-        # Draw subject color line
-        cv2.line(screen, (legend_x, legend_y_current), (legend_x + 30, legend_y_current), subject_color, underline_thickness)
-        _put_text_safe_historia(screen, "Sujeto", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
-        legend_y_current += legend_line_height
-        
-        # Draw action color highlight (rectangle instead of line)
-        highlight_rect_size = 20
-        highlight_y_top = legend_y_current - highlight_rect_size // 2
-        highlight_y_bottom = legend_y_current + highlight_rect_size // 2
-        overlay_legend = screen.copy()
-        cv2.rectangle(overlay_legend, (legend_x, highlight_y_top), (legend_x + 30, highlight_y_bottom), action_color, -1)
-        cv2.addWeighted(overlay_legend, 0.3, screen, 0.7, 0, screen)
-        _put_text_safe_historia(screen, "Verbo", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
-        legend_y_current += legend_line_height
-        
-        # Draw predicate color line
-        cv2.line(screen, (legend_x, legend_y_current), (legend_x + 30, legend_y_current), predicate_color, underline_thickness)
-        _put_text_safe_historia(screen, "Predicado", (legend_x + 40, legend_y_current), font, legend_font_scale, (255, 255, 255), legend_thickness)
+        legend_bg_width = 200  # Ancho del fondo de la leyenda (reducido de 270)
+        legend_bg = np.zeros((legend_bg_height, legend_bg_width, 3), dtype=np.uint8)
+        legend_bg[:] = (40, 40, 40)
+        screen[legend_y - 10:legend_y - 10 + legend_bg_height, legend_x - 10:legend_x - 10 + legend_bg_width] = \
+            cv2.addWeighted(screen[legend_y - 10:legend_y - 10 + legend_bg_height, legend_x - 10:legend_x - 10 + legend_bg_width], 0.7, legend_bg, 0.3, 0)
+
+        sample = "abc"
+        label_color = (255, 255, 255)
+        sample_x = legend_x
+        label_x = legend_x + 60
+        y0 = legend_y
+
+        # Sujeto: abc rojo
+        _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, subject_color, legend_thickness, bold=True)
+        _put_text_safe_historia(screen, "Sujeto", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
+        y0 += legend_line_height
+
+        # Predicado: abc azul
+        _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, predicate_color, legend_thickness, bold=True)
+        _put_text_safe_historia(screen, "Predicado", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
+        y0 += legend_line_height
+
+        # Verbo: abc azul distinto con otra fuente
+        if verb_font is not None:
+            _put_text_with_font_override(screen, sample, (sample_x, y0), verb_font, verb_color)
+        else:
+            _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, verb_color, legend_thickness, bold=True)
+        _put_text_safe_historia(screen, "Verbo", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
         # Tips - mostrar como lista numerada con fuente más grande
         tips = result.get("tips") or []
         
-        # Calcular posición inicial para tips
-        y_tips = y_pos + 50
+        # Calcular posición inicial para tips (bajado más y ajustado para no chocar con leyenda)
+        y_tips = y_pos + 160  # Aumentado de 140 a 160 para bajar más los consejos y el título
         tips_font_scale = 0.75  # Aumentado de 0.55 a 0.75
         tips_thickness = 3  # Aumentado de 2 a 3
-        tips_max_width = view_width - 100  # Ancho máximo para el texto de tips
+        # Reducir ancho máximo para evitar que choque con la leyenda (que está más a la derecha ahora)
+        tips_max_width = view_width - 250  # Reducido de 100 a 250 para dejar espacio para la leyenda
         
         # Dibujar el título "Consejos:" con fuente más grande
         _put_text_safe_historia(screen, "Consejos:", (40, y_tips), font, 0.8, (200, 200, 255), 3, bold=True)
@@ -6911,13 +7024,21 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     from collections import defaultdict
     touch_history_res = defaultdict(list)
     
-    # Esperar a que el hilo de TTS termine (si existe)
+    # Esperar a que el hilo de TTS termine (si existe) y medir el tiempo que tomó
+    tts_start_time = time.time()
     if tips_thread is not None:
         tips_thread.join()  # Esperar a que termine el TTS
+    tts_duration = time.time() - tts_start_time
     
-    # Esperar 2 segundos adicionales después de que termine el TTS
+    # Calcular tiempo mínimo total que debe esperarse (igual para ambos casos)
+    # Cuando es "inténtalo de nuevo", normalmente hay tips más largos, así que el TTS toma más tiempo
+    # Cuando es "Muy bien", puede haber tips más cortos o no haber tips
+    # Establecer un tiempo mínimo total de espera para ambos casos
+    min_total_wait_time = 4.0  # Tiempo mínimo total: 4 segundos (TTS + espera adicional)
+    tips_display_duration = max(2.0, min_total_wait_time - tts_duration)  # Asegurar tiempo mínimo total
+    
+    # Esperar tiempo adicional después de que termine el TTS
     tips_display_time = 0
-    tips_display_duration = 2.0  # Mostrar tips por 2 segundos después del TTS
     
     while tips_display_time < tips_display_duration:
         tips_display_time += 0.1
@@ -6958,9 +7079,10 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                         depth_stream.stop()
                         return "MENU"
         
-        # Actualizar confetti si está activo
+        # Actualizar confetti si está activo (más rápido)
         if confetti_system is not None:
-            confetti_system.update()
+            for _ in range(confetti_speed_mult):
+                confetti_system.update()
         
         # Redibujar la pantalla de resultados
         result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
@@ -6977,7 +7099,7 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     
     # Ahora mostrar la nueva vista con overlay claro sobre la vista de resultados
     is_correct = result.get("correct", False)
-    message_text = "Muy bien" if is_correct else "Vamos inténtalo de nuevo"
+    message_text = "¡Muy Bien!" if is_correct else "Vamos inténtalo de nuevo"
     
     def _draw_final_screen(base_screen, elevated_salir=False, elevated_reintentar=False):
         # Usar la vista de resultados como base (ya tiene la historia y consejos)
@@ -7110,7 +7232,8 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
             result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
             _draw_result_screen(result_screen_base, elevated_close=False)
             if confetti_system is not None:
-                confetti_system.update()
+                for _ in range(confetti_speed_mult):
+                    confetti_system.update()
             button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
             # Draw confetti in the final overlay
             if confetti_system is not None:
@@ -7163,9 +7286,10 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         # Redibujar la pantalla usando la vista de resultados como base
         result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
         _draw_result_screen(result_screen_base, elevated_close=False)
-        # Actualizar confetti si está activo
+        # Actualizar confetti si está activo (más rápido)
         if confetti_system is not None:
-            confetti_system.update()
+            for _ in range(confetti_speed_mult):
+                confetti_system.update()
         button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
         # Draw confetti in the final overlay (after drawing the overlay)
         if confetti_system is not None:

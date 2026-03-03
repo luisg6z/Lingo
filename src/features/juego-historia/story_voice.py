@@ -169,15 +169,18 @@ REGLAS DE ORO:
 - Si falta alguna de las palabras obligatorias, da un consejo breve, dulce y específico para completar la historia.
 - No des lecciones de ortografía, enfócate en la narrativa.
 - En caso de que la historia tenga todo lo necesario, solo felicita al niño por su historia.
-- Extrae TODOS los sujetos, acciones (verbos) y predicados de la historia y devuélvelos en el campo "parts".
+
+EXTRACCIÓN DE PARTES (COMPLETA Y PRECISA):
+- "subjects": Todos los nombres de personas o animales que hacen algo en la historia. Ejemplos: "el niño", "María", "el doctor", "la niña". Incluye artículos cuando formen parte del sujeto completo.
+- "actions": TODOS los verbos que aparecen en la historia, incluyendo formas simples, complejas y perífrasis verbales. Ejemplos: "corre", "ayuda", "juega", "está corriendo", "va a ayudar", "se está sintiendo", "ha llamado", "puede jugar". Incluye TODAS las formas verbales que encuentres.
+- "predicates": TODAS las frases que forman parte de los predicados en la historia, sin límite de palabras. Si hay 10 predicados, selecciona los 10. Ejemplos: "corre a la clínica", "ayuda a María en la clínica", "está corriendo muy rápido hacia el parque para jugar con sus amigos". Incluye predicados completos sin restricciones de longitud.
+
+IMPORTANTE: Extrae TODAS las partes de la oración de forma completa y precisa. No limites la complejidad ni el número de elementos. Si hay múltiples sujetos, verbos o predicados, inclúyelos todos.
 
 Historia del niño: "{sentence}"
 
 Responde ÚNICAMENTE con un JSON válido en una línea. Formato exacto:
 {{"correct": true o false, "tips": ["consejo1", "consejo2"], "parts": {{"subjects": ["sujeto1", "sujeto2"], "actions": ["verbo1", "verbo2"], "predicates": ["predicado1", "predicado2"]}}}}
-- "subjects": Lista de todas las palabras que son sujetos en la historia
-- "actions": Lista de todas las palabras que son verbos/acciones en la historia
-- "predicates": Lista de todas las palabras que forman parte de los predicados (puede incluir verbos si forman parte del predicado)
 Si la historia es correcta (tiene todos los elementos requeridos), devuelve true en el campo correct.
 Los consejos deben ser dirigidos al niño, no a un profesor.
 """
