@@ -32,16 +32,17 @@ sys.modules["historia_selection"] = historia_selection_module
 historia_spec.loader.exec_module(historia_selection_module)
 mostrar_seleccion_escenarios_historia = historia_selection_module.mostrar_seleccion_escenarios_historia
 
-# Cargar mostrar_seleccion_historias desde main.py (vista de selección de historias con sujetos y botón Siguiente)
+# Cargar mostrar_seleccion_historias desde juego-historia/views (vista de selección de historias con sujetos y botón Siguiente)
 _mostrar_seleccion_historias_func = None
 def _get_mostrar_seleccion_historias():
     global _mostrar_seleccion_historias_func
     if _mostrar_seleccion_historias_func is None:
-        main_path = os.path.join(project_root, "main.py")
-        main_spec = importlib.util.spec_from_file_location("main_historia", main_path)
-        main_mod = importlib.util.module_from_spec(main_spec)
-        main_spec.loader.exec_module(main_mod)
-        _mostrar_seleccion_historias_func = main_mod.mostrar_seleccion_historias
+        views_init_path = os.path.join(project_root, "src", "features", "juego-historia", "views", "__init__.py")
+        views_spec = importlib.util.spec_from_file_location("juego_historia_views", views_init_path)
+        views_mod = importlib.util.module_from_spec(views_spec)
+        sys.modules["juego_historia_views"] = views_mod
+        views_spec.loader.exec_module(views_mod)
+        _mostrar_seleccion_historias_func = views_mod.mostrar_seleccion_historias
     return _mostrar_seleccion_historias_func
 
 # Import absurdos-visuales feature (folder has hyphen, need to use importlib)

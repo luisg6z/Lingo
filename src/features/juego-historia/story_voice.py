@@ -71,9 +71,9 @@ def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on
     recognizer.phrase_threshold = 0.3
     recognizer.dynamic_energy_threshold = True
     try:
-        microphone = sr.Microphone()
+        microphone = sr.Microphone(device_index=3)
     except Exception as e:
-        print(f"Error al inicializar micrófono: {e}")
+        print(f"Error al inicializar micrófono (dispositivo 3): {e}")
         return None
     try:
         with microphone as source:

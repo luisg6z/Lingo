@@ -825,20 +825,14 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
             recognizer.pause_threshold = 1.5  # Más tiempo de silencio después del habla para capturar mejor el final
             recognizer.operation_timeout = None  # Sin timeout en operaciones
             
-            # Listar micrófonos disponibles para debugging
-            print("Micrófonos disponibles:")
-            for i, mic_name in enumerate(sr.Microphone.list_microphone_names()):
-                print(f"  {i}: {mic_name}")
-            
-            # Intentar usar el micrófono por defecto, o el primero disponible
+            # Usar dispositivo de audio 3
             try:
-                microphone = sr.Microphone()
+                microphone = sr.Microphone(device_index=3)
             except Exception as e:
-                print(f"Error al inicializar micrófono por defecto: {e}")
-                # Intentar con el primer micrófono disponible
-                microphone = sr.Microphone(pyaudio.get_device_count() - 1)
-            
-            print(f"Usando micrófono: {microphone}")
+                print(f"Error al inicializar micrófono (dispositivo 3): {e}")
+                cv2.destroyWindow(window_name)
+                continue
+            print(f"Usando micrófono (dispositivo 3): {microphone}")
         except OSError as e:
             if "PyAudio" in str(e) or "pyaudio" in str(e).lower():
                 print("Error: PyAudio no está instalado. Instalando...")

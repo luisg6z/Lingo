@@ -61,3 +61,12 @@
 2026-03-03 12:34:41,546 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
 2026-03-03 12:37:15,092 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
 2026-03-03 12:37:15,093 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 14:25:21,297 - httpx - INFO - HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-03-03 18:37:38,404 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 18:37:38,406 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 19:06:23,304 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 19:06:23,305 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 19:09:23,135 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-03 19:09:23,136 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-03 19:11:14,809 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-03 19:14:11,309 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"

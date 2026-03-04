@@ -208,3 +208,81 @@ def put_text_ubuntu(img, text, position, font_scale, color, thickness, line_type
         font_face = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img, text, position, font_face, font_scale, color, thickness, line_type)
 
+
+def calculate_word_positions(text, start_x, start_y, font_scale, max_width, bold=False):
+    """
+    Calculate the exact positions (start and end x coordinates) for each word in the text.
+    Handles word wrapping and uses PIL for accurate text measurement.
+
+    Args:
+        text: The text string to analyze
+        start_x: Starting x coordinate
+        start_y: Starting y coordinate (baseline)
+        font_scale: Font scale factor
+        max_width: Maximum width before wrapping to next line
+        bold: Whether to use bold font
+
+    Returns:
+        List of dicts with keys: 'word', 'x_start', 'x_end', 'y', 'line_index'
+    """
+    words = text.split()
+    word_positions = []
+    x_current = start_x
+    y_current = start_y
+    line_index = 0
+
+    try:
+        from PIL import Image, ImageDraw
+
+        font = get_ubuntu_font(font_scale=font_scale, bold=bold)
+        img_pil = Image.new('RGB', (100, 100), (0, 0, 0))
+        draw = ImageDraw.Draw(img_pil)
+
+        for word in words:
+            word_with_space = word + " "
+            try:
+                bbox = draw.textbbox((0, 0), word_with_space, font=font)
+                word_width = bbox[2] - bbox[0]
+            except AttributeError:
+                bbox = font.getbbox(word_with_space) if hasattr(font, "getbbox") else (0, 0, 0, 0)
+                word_width = bbox[2] - bbox[0]
+
+            if x_current + word_width > max_width and x_current > start_x:
+                y_current += int(font_scale * 35)
+                x_current = start_x
+                line_index += 1
+
+            word_start = x_current
+            word_end = x_current + word_width
+            word_positions.append({
+                'word': word,
+                'x_start': word_start,
+                'x_end': word_end,
+                'y': y_current,
+                'line_index': line_index
+            })
+            x_current = word_end
+
+    except Exception:
+        import cv2
+        font_face = cv2.FONT_HERSHEY_SIMPLEX
+        for word in words:
+            word_with_space = word + " "
+            (word_width, word_height), baseline = cv2.getTextSize(word_with_space, font_face, font_scale, 2)
+            if x_current + word_width > max_width and x_current > start_x:
+                y_current += word_height + 5
+                x_current = start_x
+                line_index += 1
+            word_start = x_current
+            word_end = x_current + word_width
+            word_positions.append({
+                'word': word,
+                'x_start': word_start,
+                'x_end': word_end,
+                'y': y_current,
+                'line_index': line_index
+            })
+            x_current = word_end
+
+    return word_positions
+
