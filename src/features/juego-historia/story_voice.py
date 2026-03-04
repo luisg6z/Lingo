@@ -6,12 +6,9 @@ import json
 import re
 import threading
 import time
+from dotenv import load_dotenv
 import speech_recognition as sr
-
-try:
-    import ollama
-except ImportError:
-    ollama = None
+from ollama import Client
 
 
 def get_required_words(config_path, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados):
@@ -129,70 +126,141 @@ def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on
         return None
 
 
-def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="deepseek-r1"):
+def _get_ollama_client():
     """
-    Ask Ollama to validate the story using the given personajes, acciones y lugares.
-    Target: children ~7 years old; respond with JSON only.
+    Crea un cliente de Ollama usando las variables de entorno
+    OLLAMA_HOST y OLLAMA_API_KEY para conectarse al servicio en la nube.
+    """
+    load_dotenv()
+    host = os.environ.get("OLLAMA_HOST")
+    api_key = os.environ.get("OLLAMA_API_KEY")
+    if not host or not api_key:
+        print("Error: OLLAMA_HOST u OLLAMA_API_KEY no están configuradas en el entorno.")
+        return None
+    try:
+        return Client(host=host, headers={'Authorization': 'Bearer ' + api_key})
+    except Exception as e:
+        print(f"Error al crear el cliente de Ollama: {e}")
+        return None
+
+
+def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="deepseek-v3"):
+    """
+    Pide a Ollama que valide la historia usando los personajes, acciones y lugares dados.
+    Público objetivo: niños de ~7 años. La respuesta debe ser SOLO JSON.
 
     Args:
-        sentence: The user's sentence/story.
-        subjects: List of character names (e.g. ["Niño", "Niña"]).
-        actions: List of action names (e.g. ["Dar"]).
-        places: List of place names (e.g. ["Casa"]).
-        model: Ollama model name.
+        sentence: Historia u oración del niño.
+        subjects: Lista de nombres de personajes (ej. ["Niño", "Niña"]).
+        actions: Lista de nombres de acciones (ej. ["Dar"]).
+        places: Lista de nombres de lugares (ej. ["Casa"]).
+        model: Nombre del modelo de Ollama.
 
     Returns:
-        dict: {"correct": bool, "tips": list of str}. On error, returns {"correct": False, "tips": ["Revisa tu oración."]}.
+        dict: {
+            "correct": bool,
+            "tips": list[str],
+            "parts": {
+                "subjects": list[str],  # fragmentos de la historia que corresponden a los sujetos dados
+                "actions": list[str],   # fragmentos de la historia que corresponden a las acciones dadas
+                "places": list[str],    # fragmentos de la historia que corresponden a los lugares dados
+            },
+        }
+        En caso de error se devuelve:
+        {"correct": False, "tips": ["Revisa tu oración."], "parts": {"subjects": [], "actions": [], "places": []}}
     """
-    default_fail = {"correct": False, "tips": ["Revisa tu oración."], "parts": {"subjects": [], "actions": [], "predicates": []}}
+    default_fail = {
+        "correct": False,
+        "tips": ["Revisa tu oración."],
+        "parts": {"subjects": [], "actions": [], "places": []},
+    }
     if not sentence or not sentence.strip():
-        return default_fail
-    if ollama is None:
+        print("No se proporcionó historia.")
         return default_fail
 
-    subjects_str = ", ".join(subjects) if subjects else "(ninguno)"
-    actions_str = ", ".join(actions) if actions else "(ninguna)"
-    places_str = ", ".join(places) if places else "(ninguno)"
+    client = _get_ollama_client()
+    if client is None:
+        print("No se pudo crear el cliente de Ollama.")
+        return default_fail
 
-    prompt = f"""Eres un profesor de español para niños de 7 años. Tu objetivo es evaluar historias cortas de forma alentadora y flexible.
+    subjects_str = ", ".join(str(s) for s in (subjects or [])) if subjects else "(ninguno)"
+    actions_str = ", ".join(str(a) for a in (actions or [])) if actions else "(ninguna)"
+    places_str = ", ".join(str(p) for p in (places or [])) if places else "(ninguno)"
+
+    # Sanitizar la historia para no romper el prompt (comillas, saltos de línea o control)
+    sentence_clean = (sentence or "").strip().replace("\r", " ").replace("\n", " ")
+    sentence_clean = sentence_clean.replace('"', "'")[:2000]  # límite razonable de longitud
+
+    prompt = f"""Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
+
+
 
 CRITERIOS DE EVALUACIÓN:
-1. ELEMENTOS: Debe incluir en la historia los siguientes elementos (o usar variaciones de): 
-   - Personajes: {subjects_str}
+
+1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
+
+2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
+
+3. PARTÍCULAS DE ENLACE: Debe usar al menos uno (y, entonces, luego, porque, pero, etc.).
+
+4. ELEMENTOS: Debe incluir (o variaciones claras de):
+
+   - Personajes (sujetos): {subjects_str}
+
    - Acciones: {actions_str}
+
    - Lugares: {places_str}
-2. ENLACES: Debe usar al menos un conector (ej: "y", "entonces", "luego", "después", "porque").
-3. CIERRE/CONCLUSIÓN: La historia debe tener un final. No tiene que ser un "Fin" formal; cuenta como conclusión cualquier resultado o consecuencia de las acciones (ej: "se quedaron dormidos", "ganaron el juego", "se pusieron felices" o "se fueron a casa").
 
-REGLAS DE ORO:
-- Sé muy flexible con la gramática y tiempos verbales.
-- Si falta alguna de las palabras obligatorias, da un consejo breve, dulce y específico para completar la historia.
-- No des lecciones de ortografía, enfócate en la narrativa.
-- En caso de que la historia tenga todo lo necesario, solo felicita al niño por su historia.
+5. CIERRE/CONCLUSIÓN:La historia no puede quedar a medias; debe tener un final.
 
-EXTRACCIÓN DE PARTES (COMPLETA Y PRECISA):
-- "subjects": Todos los nombres de personas o animales que hacen algo en la historia. Ejemplos: "el niño", "María", "el doctor", "la niña". Incluye artículos cuando formen parte del sujeto completo.
-- "actions": TODOS los verbos que aparecen en la historia, incluyendo formas simples, complejas y perífrasis verbales. Ejemplos: "corre", "ayuda", "juega", "está corriendo", "va a ayudar", "se está sintiendo", "ha llamado", "puede jugar". Incluye TODAS las formas verbales que encuentres.
-- "predicates": TODAS las frases que forman parte de los predicados en la historia, sin límite de palabras. Si hay 10 predicados, selecciona los 10. Ejemplos: "corre a la clínica", "ayuda a María en la clínica", "está corriendo muy rápido hacia el parque para jugar con sus amigos". Incluye predicados completos sin restricciones de longitud.
 
-IMPORTANTE: Extrae TODAS las partes de la oración de forma completa y precisa. No limites la complejidad ni el número de elementos. Si hay múltiples sujetos, verbos o predicados, inclúyelos todos.
 
-Historia del niño: "{sentence}"
+INSTRUCCIONES PARA LOS "TIPS":
 
-Responde ÚNICAMENTE con un JSON válido en una línea. Formato exacto:
-{{"correct": true o false, "tips": ["consejo1", "consejo2"], "parts": {{"subjects": ["sujeto1", "sujeto2"], "actions": ["verbo1", "verbo2"], "predicates": ["predicado1", "predicado2"]}}}}
-Si la historia es correcta (tiene todos los elementos requeridos), devuelve true en el campo correct.
-Los consejos deben ser dirigidos al niño, no a un profesor.
+Sé breve y muy amable.
+
+Si hay un error, usa el formato: "Dijiste '[error]', pero quedaría mejor así: '[corrección]'".
+
+Si la historia es perfecta, usa el primer tip para felicitar un punto específico (ej: "¡Me encantó cómo usaste el conector 'porque'!") y deja el resto del array vacío.
+
+
+
+ANÁLISIS PARA "parts":
+
+- "subjects": fragmentos EXACTOS del texto del niño que correspondan a los sujetos dados.
+
+- "actions": fragmentos EXACTOS del texto del niño que correspondan a las acciones dadas.
+
+- "places": fragmentos EXACTOS del texto del niño que correspondan a los lugares dados.
+
+
+
+Historia del niño: "{sentence_clean}"
+
+
+
+FORMATO DE RESPUESTA (SOLO JSON EN UNA LÍNEA, sin otro texto):
+
+{{"correct": true o false, "tips": ["consejo1", "consejo2"], "parts": {{"subjects": ["fragmento1"], "actions": ["fragmento2"], "places": ["fragmento3"]}}}}
 """
 
     try:
-        response = ollama.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = (response or {}).get("message") or {}
-        content = (raw.get("content") or "").strip()
+        messages = [{"role": "user", "content": prompt}]
+
+        content_parts = []
+        for part in client.chat(model, messages=messages, stream=True):
+            # Algunos APIs devuelven error en el stream
+            if part.get("error"):
+                print(f"Ollama devolvió error en stream: {part.get('error')}")
+                return default_fail
+            msg = (part.get("message") or {}).get("content")
+            if msg:
+                content_parts.append(msg)
+
+        content = "".join(content_parts).strip()
         if not content:
+            print("No se recibió respuesta de Ollama (contenido vacío).")
+            print(f"content parts: {content_parts}")
             return default_fail
         # Extract JSON: allow markdown code block or plain JSON
         content = re.sub(r"^```\w*\s*", "", content)
@@ -210,27 +278,30 @@ Los consejos deben ser dirigidos al niño, no a un profesor.
         print(f"Model Answer: {content}")
         if not isinstance(tips, list):
             tips = [str(tips)] if tips else []
-        # Extract parts (subjects, actions, predicates) - ensure they are lists
+        # Extraer partes (subjects, actions, places) y asegurar que sean listas
         subjects = parts.get("subjects", [])
         actions = parts.get("actions", [])
-        predicates = parts.get("predicates", [])
+        places = parts.get("places", [])
         if not isinstance(subjects, list):
             subjects = [subjects] if subjects else []
         if not isinstance(actions, list):
             actions = [actions] if actions else []
-        if not isinstance(predicates, list):
-            predicates = [predicates] if predicates else []
+        if not isinstance(places, list):
+            places = [places] if places else []
         return {
             "correct": correct,
             "tips": tips,
             "parts": {
                 "subjects": subjects,
                 "actions": actions,
-                "predicates": predicates
+                "places": places,
             }
         }
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"Error al decodificar el JSON de Ollama: {e}")
         return default_fail
     except Exception as e:
-        print(f"Error Ollama: {e}")
+        import traceback
+        print(f"Error Ollama ({type(e).__name__}): {e}")
+        traceback.print_exc()
         return default_fail

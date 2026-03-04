@@ -6402,6 +6402,90 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     config_path = os.path.join(project_root, "src", "features", "juego-historia", "config", "palabras_imagenes.json")
     required_words = get_required_words(config_path, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados)
 
+    # Asegurar inicialización básica de pygame (para usar superficies como loader)
+    try:
+        import pygame
+        if not pygame.get_init():
+            pygame.init()
+    except Exception:
+        pygame = None
+
+    # Helper: dibujar un reloj analógico como loader usando pygame y volcarlo en una imagen OpenCV.
+    # La manecilla da vueltas completas y, cuando el modelo termina, esperamos a que vuelva a las 12
+    # antes de cambiar de vista.
+    def _draw_clock_loader(target_screen, center_x, center_y, radius, elapsed_ms):
+        if pygame is None:
+            return
+        try:
+            size = radius * 2 + 4
+            clock_surface = pygame.Surface((size, size), pygame.SRCALPHA)
+
+            # Progreso de giro periódico (vuelta completa cada 5s aprox.)
+            rotation_ms = 5000.0
+            progress = (elapsed_ms / rotation_ms) % 1.0
+
+            # Fondo blanco sólido de la esfera
+            clock_surface.fill((0, 0, 0, 0))
+            pygame.draw.circle(clock_surface, (255, 255, 255, 255), (size // 2, size // 2), radius)
+            pygame.draw.circle(clock_surface, (0, 0, 0, 255), (size // 2, size // 2), radius, 3)
+
+            # Manecilla: empieza en las 12 (ángulo -pi/2 = arriba) y da vueltas horarias continuas.
+            angle = -math.pi / 2.0 + 2.0 * math.pi * progress
+            hand_len = int(radius * 0.75)
+            cx, cy = size // 2, size // 2
+            hx = cx + int(hand_len * math.cos(angle))
+            hy = cy + int(hand_len * math.sin(angle))
+            # Manecilla negra y un poco más gruesa
+            pygame.draw.line(clock_surface, (0, 0, 0, 255), (cx, cy), (hx, hy), 8)
+
+            # Cubrir cualquier punto de color en el centro del reloj
+            # para que el punto central se vea negro (mismo color que la manecilla).
+            pygame.draw.circle(clock_surface, (0, 0, 0, 255), (cx, cy), max(4, radius // 10))
+
+            # Números de las horas (1 a 12)
+            try:
+                if not pygame.font.get_init():
+                    pygame.font.init()
+                font_num = pygame.font.SysFont(None, max(14, int(radius * 0.35)))
+                for hour in range(1, 13):
+                    # Ángulo para cada número (12 arriba)
+                    ang = (hour / 12.0) * 2 * math.pi
+                    num_radius = radius * 0.78
+                    nx = cx + int(num_radius * math.sin(ang))
+                    ny = cy - int(num_radius * math.cos(ang))
+                    text_surface = font_num.render(str(hour), True, (0, 0, 0))
+                    tw, th = text_surface.get_size()
+                    clock_surface.blit(text_surface, (nx - tw // 2, ny - th // 2))
+            except Exception:
+                pass
+
+            # Convertir surface de pygame a imagen BGRA de OpenCV
+            clock_string = pygame.image.tostring(clock_surface, "RGBA")
+            clock_np = np.frombuffer(clock_string, np.uint8)
+            clock_img = clock_np.reshape((size, size, 4))
+            clock_img = cv2.cvtColor(clock_img, cv2.COLOR_RGBA2BGRA)
+
+            h, w = clock_img.shape[:2]
+            x1 = max(0, center_x - w // 2)
+            y1 = max(0, center_y - h // 2)
+            x2 = min(target_screen.shape[1], x1 + w)
+            y2 = min(target_screen.shape[0], y1 + h)
+            if x2 <= x1 or y2 <= y1:
+                return
+
+            crop_w = x2 - x1
+            crop_h = y2 - y1
+            clock_crop = clock_img[0:crop_h, 0:crop_w]
+
+            alpha = clock_crop[:, :, 3] / 255.0
+            alpha = alpha[:, :, np.newaxis]
+            roi = target_screen[y1:y2, x1:x2].astype(np.float32)
+            clock_rgb = clock_crop[:, :, :3].astype(np.float32)
+            blended = alpha * clock_rgb + (1.0 - alpha) * roi
+            target_screen[y1:y2, x1:x2] = blended.astype(np.uint8)
+        except Exception:
+            return
+
     # 1) Show "Preparando..." first; then "Ahora puedes hablar" only after listening has started
     font = cv2.FONT_HERSHEY_DUPLEX
     fs_prep, th_prep = 1.5, 3  # Mismo tamaño y grosor que "Comprobando tu historia"
@@ -6573,13 +6657,14 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                 subjects=sujetos_seleccionados,
                 actions=acciones_seleccionadas,
                 places=lugares_seleccionados,
-                model="deepseek-r1",
+                model="deepseek-v3.2:cloud",
             )
         done_holder[0] = True
     thr = threading.Thread(target=_ollama_thread, daemon=True)
     thr.start()
     start_thinking = time.time()
-    while not done_holder[0]:
+    finishing_clock = False  # Fase de "aterrizar" la manecilla en las 12
+    while True:
         elapsed = int((time.time() - start_thinking) * 1000)
         dots = "." * ((elapsed // 500) % 4)
         think_screen = _gradient_screen()
@@ -6612,8 +6697,36 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         # Dibujar texto con sombra y más grande
         _put_text_safe_historia(think_screen, msg_think, (tx_think + 2, ty_think + 2), font, font_scale_think, (0, 0, 0), thickness_think + 1, bold=True)
         _put_text_safe_historia(think_screen, msg_think, (tx_think, ty_think), font, font_scale_think, (255, 255, 255), thickness_think, bold=True)
+
+        # Dibujar reloj analógico de carga debajo del texto usando pygame
+        clock_radius = 50
+        clock_center_x = view_width // 2
+        clock_center_y = ty_think + 120
+        _draw_clock_loader(
+            think_screen,
+            clock_center_x,
+            clock_center_y,
+            clock_radius,
+            elapsed,
+        )
+
         cv2.imshow(window_name, scale_to_videobeam(think_screen))
         cv2.waitKey(1)  # Cambiar a 1ms para que no se quede pegado
+
+        # Lógica de salida:
+        # - Mientras el modelo no termina, el reloj sigue girando.
+        # - Cuando termina, esperamos a que la manecilla vuelva a pasar por las 12
+        #   (progreso cerca de 0) y recién ahí rompemos el bucle.
+        if not done_holder[0]:
+            continue
+
+        # Modelo ya terminó: iniciar/usar fase de aterrizaje.
+        # Recalculamos el progreso del reloj con el mismo período que en _draw_clock_loader.
+        rotation_ms = 5000.0
+        clock_progress = (elapsed / rotation_ms) % 1.0
+        # Cerca de 12 cuando el progreso está muy cerca de 0 o de 1.
+        if clock_progress <= 0.03 or clock_progress >= 0.97:
+            break
     result = result_holder[0] or {"correct": False, "tips": ["Revisa tu oración."]}
 
     # Initialize confetti system if story is correct
@@ -6621,6 +6734,23 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
     if result.get("correct", False):
         confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
         confetti_system.start(multiple_bursts=True, num_burst_points=3)
+        # Reproducir sonido de correcto (mismo que en otras vistas) cuando la historia es correcta
+        try:
+            import pygame
+            # Asegurar que el mixer esté inicializado
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+            except:
+                pygame.mixer.init()
+            try:
+                correct_sound = pygame.mixer.Sound("sounds/correct.mp3")
+                correct_sound.set_volume(1.0)
+                correct_sound.play()
+            except Exception as e:
+                print(f"⚠ Error al reproducir sonido de correcto en juego-historia: {e}")
+        except Exception as e:
+            print(f"⚠ Error al inicializar pygame para sonido de correcto en juego-historia: {e}")
     # Acelerar confetti en historias (en otros juegos se percibe más rápido por mayor FPS)
     confetti_speed_mult = 4  # Aumentado de 2 a 4 para hacer el confetti más rápido
 
@@ -6683,16 +6813,17 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         # Sentence with highlights (word-by-word with line wrap) and styling for parts
         display_text = text if text else "No se pudo entender. Intenta de nuevo."
         y_pos = 350  # Bajado de 320 a 350 para dar más espacio y bajar el texto
-        # Aumentar tamaño de la transcripción (NO tocar el tamaño de "Consejos")
-        font_scale = 1.0  # Aumentado de 0.8 a 1.0 para texto más grande
+        # Aumentar un poco más el tamaño de la transcripción coloreada
+        font_scale = 1.2
         thickness = 3
         max_width = view_width - 80
         
-        # Get parts from result
+        # Get parts from result (fragmentos de la historia que representan
+        # sujetos, acciones y lugares usados)
         parts = result.get("parts", {})
         subjects_list = parts.get("subjects", [])
         actions_list = parts.get("actions", [])
-        predicates_list = parts.get("predicates", [])
+        places_list = parts.get("places", [])
         
         # Create normalized sets for matching
         def normalize_word(word):
@@ -6707,10 +6838,11 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                     return True
             return False
         
-        # Colors for different parts (BGR)
-        subject_color = (0, 0, 255)  # Rojo: Sujeto
-        predicate_color = (255, 0, 0)  # Azul: Predicado
-        verb_color = (255, 120, 0)  # Azul distinto: Verbo (más claro/cian)
+        # Colors for different parts (BGR: Blue, Green, Red)
+        # Hex: Sujeto F73D3D, Acción 39E355, Lugar 39E8FF
+        subject_color = (61, 61, 247)      # Sujeto: #F73D3D -> BGR (61, 61, 247)
+        place_color = (255, 232, 57)       # Lugar: #39E8FF -> BGR (255, 232, 57) = cyan
+        action_color = (85, 227, 57)       # Acción: #39E355 -> BGR (85, 227, 57)
         
         # Calculate word positions using utility function
         word_positions_data = calculate_word_positions(display_text, 40, y_pos, font_scale, max_width, bold=False)
@@ -6769,7 +6901,7 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         # Find phrase positions for each category
         subject_phrases = find_phrase_positions(subjects_list, word_positions_data)
         action_phrases = find_phrase_positions(actions_list, word_positions_data)
-        predicate_phrases = find_phrase_positions(predicates_list, word_positions_data)
+        place_phrases = find_phrase_positions(places_list, word_positions_data)
         
         # Build underline info from phrase matches
         underline_info = []
@@ -6777,28 +6909,27 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         # Combine all phrase matches with their categories
         all_phrases = []
         for sp in subject_phrases:
-            all_phrases.append({**sp, 'is_subject': True, 'is_action': False, 'is_predicate': False})
+            all_phrases.append({**sp, 'is_subject': True, 'is_action': False, 'is_place': False})
         for ap in action_phrases:
-            # Check if this phrase is already in the list (might overlap with subject/predicate)
+            # Check if this phrase is already in the list (might overlap with subject/place)
             existing = next((p for p in all_phrases if p.get('start_idx') == ap.get('start_idx') and p.get('end_idx') == ap.get('end_idx')), None)
             if existing:
                 existing['is_action'] = True
             else:
-                all_phrases.append({**ap, 'is_subject': False, 'is_action': True, 'is_predicate': False})
-        for pp in predicate_phrases:
+                all_phrases.append({**ap, 'is_subject': False, 'is_action': True, 'is_place': False})
+        for pp in place_phrases:
             existing = next((p for p in all_phrases if p.get('start_idx') == pp.get('start_idx') and p.get('end_idx') == pp.get('end_idx')), None)
             if existing:
-                existing['is_predicate'] = True
+                existing['is_place'] = True
             else:
-                all_phrases.append({**pp, 'is_subject': False, 'is_action': False, 'is_predicate': True})
+                all_phrases.append({**pp, 'is_subject': False, 'is_action': False, 'is_place': True})
         
         underline_info = all_phrases
 
-        # --- NUEVO: en la transcripción NO subrayamos, cambiamos color/fuente del texto ---
-        # Marcar palabras por categoría usando índices (para que el predicado marque TODAS las palabras)
+        # Marcar palabras por categoría usando índices
         subject_word_idxs = set()
-        predicate_word_idxs = set()
-        verb_word_idxs = set()
+        place_word_idxs = set()
+        action_word_idxs = set()
 
         def _add_range(out_set, start_idx, end_idx):
             if start_idx is None or end_idx is None:
@@ -6816,13 +6947,13 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         for ui in underline_info:
             if ui.get("is_subject"):
                 _add_range(subject_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
-            if ui.get("is_predicate"):
-                _add_range(predicate_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+            if ui.get("is_place"):
+                _add_range(place_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
             if ui.get("is_action"):
-                _add_range(verb_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+                _add_range(action_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
 
-        # Fuente alternativa para verbo (otra fuente). Intentar Italic del sistema; fallback a Ubuntu bold.
-        def _get_verb_font(font_scale_local):
+        # Fuente alternativa para "Acción" (otra fuente). Intentar Italic del sistema; fallback a Ubuntu bold.
+        def _get_action_font(font_scale_local):
             try:
                 from PIL import ImageFont
                 from src.core.font_utils import get_ubuntu_font_path, get_ubuntu_font
@@ -6850,10 +6981,10 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
             except Exception:
                 return None
 
-        verb_font = _get_verb_font(font_scale)
+        action_font = _get_action_font(font_scale)
 
         def _put_text_with_font_override(img, text_to_draw, position, pil_font, color_bgr):
-            """Dibuja texto con una fuente PIL específica (para 'Verbo')."""
+            """Dibuja texto con una fuente PIL específica (para la acción)."""
             try:
                 from PIL import Image, ImageDraw
                 img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -6866,27 +6997,39 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
                 _put_text_safe_historia(img, text_to_draw, position, font, font_scale, color_bgr, thickness)
 
         # Dibujar texto palabra por palabra con color/fuente según categoría
-        # (Quitamos el resaltado "amarillo/cian" de palabras requeridas: solo Sujeto/Verbo/Predicado)
+        # (sin relieve ni sombras: solo color plano para cada parte de la oración)
         for idx, wp_data in enumerate(word_positions_data):
             word = wp_data["word"]
 
-            is_verb = idx in verb_word_idxs
+            is_action = idx in action_word_idxs
             is_subject = idx in subject_word_idxs
-            is_predicate = idx in predicate_word_idxs
+            is_place = idx in place_word_idxs
 
-            if is_verb:
-                # Verbo: azul distinto con otra fuente
-                if verb_font is not None:
-                    _put_text_with_font_override(screen, word, (wp_data["x_start"], wp_data["y"]), verb_font, verb_color)
+            x_start = wp_data["x_start"]
+            y_base = wp_data["y"]
+
+            if is_action or is_subject or is_place:
+                # Color de texto según categoría (sin fondo ni sombra)
+                if is_action:
+                    fg_color = action_color
+                elif is_subject:
+                    fg_color = subject_color
+                else:  # lugar
+                    fg_color = place_color
+
+                # Dibujar texto principal según categoría (sin relieve)
+                if is_action:
+                    if action_font is not None:
+                        _put_text_with_font_override(screen, word, (x_start, y_base), action_font, fg_color)
+                    else:
+                        _put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
+                elif is_subject:
+                    _put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
                 else:
-                    _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, verb_color, thickness, bold=True)
-            elif is_subject:
-                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, subject_color, thickness)
-            elif is_predicate:
-                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, predicate_color, thickness)
+                    _put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
             else:
-                # Resto del texto en blanco
-                _put_text_safe_historia(screen, word, (wp_data["x_start"], wp_data["y"]), font, font_scale, (255, 255, 255), thickness)
+                # Resto del texto en blanco plano (sin sombra)
+                _put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, (255, 255, 255), thickness)
 
         # --- Leyenda (sin subrayados): "abc" con color/fuente ---
         legend_x = view_width - 220  # Movido más a la derecha (de 290 a 220)
@@ -6913,74 +7056,76 @@ def _run_historia_voice_flow(window_name, view_width, view_height, scale_to_vide
         _put_text_safe_historia(screen, "Sujeto", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
         y0 += legend_line_height
 
-        # Predicado: abc azul
-        _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, predicate_color, legend_thickness, bold=True)
-        _put_text_safe_historia(screen, "Predicado", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
+        # Lugar: abc azul (mismo color que antes se usaba para el predicado)
+        _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, place_color, legend_thickness, bold=True)
+        _put_text_safe_historia(screen, "Lugar", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
         y0 += legend_line_height
 
-        # Verbo: abc azul distinto con otra fuente
-        if verb_font is not None:
-            _put_text_with_font_override(screen, sample, (sample_x, y0), verb_font, verb_color)
+        # Acción: abc verde con otra fuente
+        if action_font is not None:
+            _put_text_with_font_override(screen, sample, (sample_x, y0), action_font, action_color)
         else:
-            _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, verb_color, legend_thickness, bold=True)
-        _put_text_safe_historia(screen, "Verbo", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
-        # Tips - mostrar como lista numerada con fuente más grande
+            _put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, action_color, legend_thickness, bold=True)
+        _put_text_safe_historia(screen, "Acción", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
+
+        # Tips - mostrar como lista numerada con fuente más grande SOLO cuando la
+        # historia NO está completamente bien (is_correct == False) y haya tips.
         tips = result.get("tips") or []
-        
-        # Calcular posición inicial para tips (bajado más y ajustado para no chocar con leyenda)
-        y_tips = y_pos + 160  # Aumentado de 140 a 160 para bajar más los consejos y el título
-        tips_font_scale = 0.75  # Aumentado de 0.55 a 0.75
-        tips_thickness = 3  # Aumentado de 2 a 3
-        # Reducir ancho máximo para evitar que choque con la leyenda (que está más a la derecha ahora)
-        tips_max_width = view_width - 250  # Reducido de 100 a 250 para dejar espacio para la leyenda
-        
-        # Dibujar el título "Consejos:" con fuente más grande
-        _put_text_safe_historia(screen, "Consejos:", (40, y_tips), font, 0.8, (200, 200, 255), 3, bold=True)
-        
-        # Dibujar tips como lista numerada
-        tips_x = 60  # Indentación para la lista
-        tips_y = y_tips + 35
-        tips_line_height = 35  # Espacio entre líneas (aumentado)
-        
-        for idx, tip in enumerate(tips, 1):
-            # Crear texto con número de lista: "1. [tip text]"
-            tip_text = f"{idx}. {tip}"
-            
-            # Dividir el tip en palabras para word wrapping
-            tip_words = tip_text.split()
-            current_line = ""
-            
-            for word in tip_words:
-                test_line = current_line + (" " if current_line else "") + word
-                # Calcular ancho del texto de prueba
-                try:
-                    from PIL import Image, ImageDraw
-                    from src.core.font_utils import get_ubuntu_font
-                    font_ubuntu = get_ubuntu_font(font_scale=tips_font_scale, bold=False)
-                    img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
-                    draw = ImageDraw.Draw(img_pil)
+        if not is_correct and tips:
+            # Calcular posición inicial para tips (bajado más y ajustado para no chocar con leyenda)
+            y_tips = y_pos + 160  # Aumentado de 140 a 160 para bajar más los consejos y el título
+            tips_font_scale = 0.75  # Aumentado de 0.55 a 0.75
+            tips_thickness = 3  # Aumentado de 2 a 3
+            # Reducir ancho máximo para evitar que choque con la leyenda (que está más a la derecha ahora)
+            tips_max_width = view_width - 250  # Reducido de 100 a 250 para dejar espacio para la leyenda
+
+            # Dibujar el título "Consejos:" con fuente más grande
+            _put_text_safe_historia(screen, "Consejos:", (40, y_tips), font, 0.8, (200, 200, 255), 3, bold=True)
+
+            # Dibujar tips como lista numerada
+            tips_x = 60  # Indentación para la lista
+            tips_y = y_tips + 35
+            tips_line_height = 35  # Espacio entre líneas (aumentado)
+
+            for idx, tip in enumerate(tips, 1):
+                # Crear texto con número de lista: "1. [tip text]"
+                tip_text = f"{idx}. {tip}"
+
+                # Dividir el tip en palabras para word wrapping
+                tip_words = tip_text.split()
+                current_line = ""
+
+                for word in tip_words:
+                    test_line = current_line + (" " if current_line else "") + word
+                    # Calcular ancho del texto de prueba
                     try:
-                        bbox = draw.textbbox((0, 0), test_line, font=font_ubuntu)
-                        test_width = bbox[2] - bbox[0]
-                    except AttributeError:
-                        bbox = font_ubuntu.getbbox(test_line) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
-                        test_width = bbox[2] - bbox[0]
-                except:
-                    test_size, _ = cv2.getTextSize(test_line, font, tips_font_scale, tips_thickness)
-                    test_width = test_size[0]
-                
-                # Si el texto excede el ancho máximo, dibujar la línea actual y empezar una nueva
-                if test_width > tips_max_width and current_line:
+                        from PIL import Image, ImageDraw
+                        from src.core.font_utils import get_ubuntu_font
+                        font_ubuntu = get_ubuntu_font(font_scale=tips_font_scale, bold=False)
+                        img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+                        draw = ImageDraw.Draw(img_pil)
+                        try:
+                            bbox = draw.textbbox((0, 0), test_line, font=font_ubuntu)
+                            test_width = bbox[2] - bbox[0]
+                        except AttributeError:
+                            bbox = font_ubuntu.getbbox(test_line) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                            test_width = bbox[2] - bbox[0]
+                    except:
+                        test_size, _ = cv2.getTextSize(test_line, font, tips_font_scale, tips_thickness)
+                        test_width = test_size[0]
+
+                    # Si el texto excede el ancho máximo, dibujar la línea actual y empezar una nueva
+                    if test_width > tips_max_width and current_line:
+                        _put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
+                        tips_y += tips_line_height
+                        current_line = word
+                    else:
+                        current_line = test_line
+
+                # Dibujar la última línea del tip si hay contenido
+                if current_line:
                     _put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
                     tips_y += tips_line_height
-                    current_line = word
-                else:
-                    current_line = test_line
-            
-            # Dibujar la última línea del tip si hay contenido
-            if current_line:
-                _put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
-                tips_y += tips_line_height
         draw_close_card_final_fn(screen, elevated=elevated_close)
         # Draw confetti if story is correct (will be drawn after this function returns)
 
