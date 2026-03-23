@@ -817,10 +817,15 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                             break
                         # Si es Absurdos Logicos, ir directamente al juego de absurdos visuales
                         elif juego_seleccionado == "Absurdos Logicos":
-                            # Ir directamente al juego de absurdos visuales (sin vista intermedia)
-                            juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, sentence_transformer_model)
-                            # El juego retornó, volver al menú principal
-                            # Recrear el menú
+                            # Reutilizar la misma ventana del menú en el videobeam (como en Historias).
+                            # Así al dar X el juego no cierra la ventana y aquí la actualizamos con el menú.
+                            juego_absurdos_reconocimiento_voz(
+                                device, coordenadas, dmax_map, dmin_map, sentence_transformer_model,
+                                existing_window_name="Menú de Juegos"
+                            )
+                            
+                            # El juego retornó, volver al menú principal SOLO aquí (cuando el juego termina).
+                            # Recrear el menú desde cero.
                             videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
                             for y in range(view_height):
                                 ratio = y / view_height

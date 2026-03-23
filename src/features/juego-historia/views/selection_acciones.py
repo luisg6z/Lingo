@@ -344,13 +344,14 @@ def mostrar_seleccion_acciones(device, coordenadas, dmax_map, dmin_map, draw_log
                 close_card_detection_y_acciones <= y_touch <= close_card_detection_y_acciones + close_card_detection_h_acciones)
     
     # Definir las 6 acciones
+    # (Ayudar, Trabajar, Cocinar, Correr, Llamar, Jugar)
     acciones = [
-        {"nombre": "Dar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Dar.png"},
-        {"nombre": "Ayudar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
-        {"nombre": "Correr", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
-        {"nombre": "Jugar", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Jugar.png"},
+        {"nombre": "Ayudar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
+        {"nombre": "Trabajar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"},
+        {"nombre": "Cocinar", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinar.png"},
+        {"nombre": "Correr", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
         {"nombre": "Llamar", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Llamar.png"},
-        {"nombre": "Trabajar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"}
+        {"nombre": "Jugar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Jugar.png"}
     ]
     
     # Cargar imágenes de las acciones si existen
@@ -911,6 +912,11 @@ def mostrar_seleccion_acciones(device, coordenadas, dmax_map, dmin_map, draw_log
                     depth_stream = device.create_depth_stream()
                     rgb_stream.start()
                     depth_stream.start()
+                    # Resetear estado del botón Siguiente para que no se dispare de nuevo inmediatamente
+                    siguiente_pressed_acciones = False
+                    siguiente_press_frames_acciones = 0
+                    siguiente_elevated_acciones = False
+                    print("Volviendo de lugares a acciones por BACK; reseteando estado de botón Siguiente.")
                     # Continuar en el bucle de acciones (no retornar nada)
                     continue
                 

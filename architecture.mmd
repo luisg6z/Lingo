@@ -1,0 +1,115 @@
+%% MagicboARd (Lingo) - System Architecture Diagram
+%% Hardware: Xbox Kinect (Camera + Depth + Microphone)
+%% Rendered with Mermaid (e.g. VS Code Mermaid extension, mermaid.live)
+
+flowchart TB
+    subgraph HARDWARE["🖥️ HARDWARE - Xbox Kinect"]
+        KINECT["Xbox Kinect"]
+        CAM["RGB Camera<br/>640×480"]
+        DEPTH["Depth Sensor<br/>640×480"]
+        MIC["Microphone Array"]
+        KINECT --> CAM
+        KINECT --> DEPTH
+        KINECT --> MIC
+    end
+
+    subgraph DRIVERS["📦 DRIVERS & APIs"]
+        OPENNI["OpenNI2 SDK<br/>(openni / openni2)"]
+        PYAUDIO["PyAudio"]
+        OPENNI --> OPENNI_PY["openni2.Device<br/>Color + Depth streams"]
+    end
+
+    subgraph CORE["⚙️ CORE (src/core)"]
+        INIT["openni_init.py<br/>Initialize Kinect"]
+        CALIB["calibrate_area.py<br/>ROI, dmax_map, coordinates"]
+        TOUCH["Touch detection<br/>depth_roi → centroids"]
+        MAP["Coordinate mapping<br/>(xw,yw) → (xv,yv)<br/>1280×800 view"]
+        UI["ui_utils.py<br/>scale_to_videobeam 1920×1080"]
+        FONT["font_utils.py"]
+        DETECT["detection.py<br/>HSV / color detection"]
+    end
+
+    subgraph CONFIG["📁 CONFIGURATION"]
+        COORDS["ultima_configuracion_coordenadas.json<br/>xw_*, yw_*, xv_*, yv_*"]
+        DMAX["dmax_map.txt / dmin"]
+        COORDS --> CALIB
+        DMAX --> CALIB
+    end
+
+    subgraph FEATURES["🎮 FEATURES (src/features)"]
+        MENU["menu/menu.py<br/>Main menu (touchable cards)"]
+        CLASIF["clasificacion/<br/>Levels + Game<br/>(Kinect + touch)"]
+        STORY["juego-historia/<br/>selection, game, story_voice<br/>voice_flow, views"]
+        ABSURDOS["absurdos-visuales/<br/>game, selection<br/>(voice + embeddings)"]
+    end
+
+    subgraph VOICE_PIPELINE["🎤 VOICE PIPELINE"]
+        SR["SpeechRecognition<br/>(e.g. Google)"]
+        OLLAMA["Ollama API<br/>(story verification)"]
+        ST["sentence-transformers<br/>paraphrase-multilingual-MiniLM-L12-v2"]
+        SR --> OLLAMA
+        SR --> ST
+    end
+
+    subgraph EXTERNAL["☁️ EXTERNAL SERVICES"]
+        OLLAMA_SVC["Ollama (local/remote)<br/>deepseek-v3"]
+        GOOGLE_SR["Google Speech Recognition"]
+        HF["Hugging Face<br/>(model download)"]
+        YOLO_EXT["Ultralytics YOLO<br/>object detection"]
+    end
+
+    subgraph OUTPUT["🖼️ OUTPUT"]
+        CV2["OpenCV (cv2)<br/>numpy buffers"]
+        VIDEOBEAM["Videobeam / Projector<br/>1920×1080"]
+        CV2 --> VIDEOBEAM
+    end
+
+    %% Hardware → Drivers
+    CAM --> OPENNI
+    DEPTH --> OPENNI
+    MIC --> PYAUDIO
+
+    %% Drivers → Core
+    OPENNI_PY --> INIT
+    INIT --> CALIB
+    CALIB --> TOUCH
+    TOUCH --> MAP
+    MAP --> UI
+    UI --> CV2
+    PYAUDIO --> SR
+
+    %% Core → Features
+    INIT --> MENU
+    TOUCH --> MENU
+    MAP --> MENU
+    MENU --> CLASIF
+    MENU --> STORY
+    MENU --> ABSURDOS
+
+    %% Voice pipeline connections
+    STORY --> SR
+    STORY --> OLLAMA
+    ABSURDOS --> SR
+    ABSURDOS --> ST
+    OLLAMA --> OLLAMA_SVC
+    SR --> GOOGLE_SR
+    ST --> HF
+
+    %% YOLO (optional path for classification / detection)
+    CAM -.-> YOLO_EXT
+    YOLO_EXT -.-> CLASIF
+    YOLO_EXT -.-> STORY
+
+    %% Styling
+    classDef hardware fill:#e1f5fe
+    classDef driver fill:#fff3e0
+    classDef core fill:#e8f5e9
+    classDef feature fill:#f3e5f5
+    classDef external fill:#fce4ec
+    classDef output fill:#e0f2f1
+    class CAM,DEPTH,MIC,KINECT hardware
+    class OPENNI,PYAUDIO driver
+    class INIT,CALIB,TOUCH,MAP,UI core
+    class MENU,CLASIF,STORY,ABSURDOS feature
+    class OLLAMA_SVC,GOOGLE_SR,HF,YOLO_EXT external
+    class CV2,VIDEOBEAM output

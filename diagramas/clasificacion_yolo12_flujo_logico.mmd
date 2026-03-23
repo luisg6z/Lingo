@@ -1,0 +1,24 @@
+%% Flujo lógico: clasificación por escenarios con YOLO12 (levels.py)
+%% Bbox YOLO xyxy → numpy → map_coordinates → draw_shine_effect (cv2 sobre ndarray).
+%%
+%% REGLA mermaid.live: un solo diagrama por cuadro de texto.
+
+flowchart TD
+    START([Menú: Clasificación]) --> A["mostrar_seleccion_niveles_clasificacion"]
+    A --> B["Elegir nivel: fija N escenarios a jugar"]
+    B --> C["mostrar_vista_5_escenarios: tacto elige N tarjetas escenario"]
+    C --> D["mostrar_vista_rectangulos_escenarios"]
+
+    D --> E["Crear ObjectDetector: ultralytics YOLO carga best.pt"]
+    E --> F["Traducciones label_translations.json, rectángulos con imágenes escenario"]
+
+    F --> G{Bucle: cada frame hasta cerrar o fin juego}
+    G --> H["Leer frame RGB, BGR, flip"]
+    H --> I["YOLO: lista detecciones label, conf, bbox numpy xyxy, category"]
+    I --> J["Fusionar detecciones solapadas misma clase IoU"]
+    J --> K["Por cada detección válida: proyectar bbox al videobeam"]
+    K --> L["Si centro está en rectángulo escenario: verde si category coincide, si no rojo"]
+    L --> M["draw_shine_effect recuadro + putText label estable + TTS y contadores 5 piezas"]
+    M --> N["scale_to_videobeam imshow y procesar toques depth"]
+    N -->|sigue| G
+    N -->|cerrar reinicio o fin| O([Retorno a menú o niveles])

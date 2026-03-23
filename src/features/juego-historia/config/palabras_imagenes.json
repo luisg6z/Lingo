@@ -2,25 +2,25 @@
   "sujetos": {
     "Niño": ["niño", "nino"],
     "Niña": ["niña", "nina"],
-    "Doctor": ["doctor"],
-    "Maestra": ["maestra"],
+    "Cocinera": ["cocinera"],
     "Policia": ["policía", "policia"],
-    "Perro": ["perro"]
+    "Doctor": ["doctor"],
+    "Maestra": ["maestra"]
   },
   "acciones": {
-    "Dar": ["dar", "da", "dio"],
     "Ayudar": ["ayudar", "ayuda", "ayudó"],
+    "Trabajar": ["trabajar", "trabaja", "trabajó"],
+    "Cocinar": ["cocinar", "cocina", "cocinando"],
     "Correr": ["correr", "corre", "corrió"],
-    "Jugar": ["jugar", "juega", "jugó"],
     "Llamar": ["llamar", "llama", "llamó"],
-    "Trabajar": ["trabajar", "trabaja", "trabajó"]
+    "Jugar": ["jugar", "juega", "jugó"]
   },
   "lugares": {
-    "Calle": ["calle"],
-    "Clinica": ["clínica", "clinica"],
-    "Estacion-Policia": ["estación", "estacion", "policía", "policia"],
-    "Escuela": ["escuela"],
     "Casa": ["casa"],
-    "Parque": ["parque"]
+    "Clinica": ["clínica", "clinica"],
+    "Escuela": ["escuela"],
+    "Estacion-policia": ["estación de policía", "estacion de policia", "estación", "estacion", "policía", "policia"],
+    "Parque": ["parque"],
+    "Cocina": ["cocina"]
   }
 }

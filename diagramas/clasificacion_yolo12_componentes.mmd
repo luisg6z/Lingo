@@ -1,0 +1,62 @@
+%% Clasificación con piezas físicas + YOLO12 (escenarios en rectángulos)
+%% NO es game.py juego_clasificacion: ese usa HSV y detect_color_and_shape.
+%%
+%% REGLA mermaid.live: un solo diagrama por cuadro de texto.
+
+flowchart TB
+    subgraph EXT["Externo"]
+        KINECT["Kinect OpenNI2 RGB y depth"]
+        PT["Pesos YOLO<br/>runs/detect/.../yolo12_animal_detection/weights/best.pt"]
+        JSON_C["src/config ultima_configuracion_coordenadas.json"]
+        JSON_T["src/config label_translations.json"]
+        IMG["images EscenarioGranja Calle etc PNG"]
+        SND["pygame sounds incorrecto correcto"]
+    end
+
+    subgraph MENU["menu.py"]
+        M["mostrar_menu_juegos carga JSON y dmax pasa a niveles"]
+    end
+
+    subgraph LEVELS["levels.py flujo clasificación YOLO"]
+        L1["mostrar_seleccion_niveles_clasificacion"]
+        L2["mostrar_vista_5_escenarios<br/>elige N escenarios con tacto"]
+        L3["mostrar_vista_rectangulos_escenarios<br/>rectángulos por escenario + bucle YOLO"]
+    end
+
+    subgraph DET["detection_logic.py raíz proyecto"]
+        OD["ObjectDetector ultralytics YOLO modelo best.pt"]
+        MAP["map_coordinates cámara a viewport"]
+        SH["draw_shine_effect cv2 rectángulo sobre numpy overlay"]
+    end
+
+    subgraph CORE["src/core"]
+        FU["font_utils put_text_ubuntu"]
+    end
+
+    subgraph COMP["Compartido"]
+        CF["confetti ConfettiSystem"]
+        BTN["components botones"]
+    end
+
+    M --> L1
+    L1 --> L2
+    L2 --> L3
+
+    M --> KINECT
+    M --> JSON_C
+    L1 --> KINECT
+    L2 --> KINECT
+    L3 --> KINECT
+
+    L3 --> OD
+    L3 --> MAP
+    L3 --> SH
+    L3 --> JSON_T
+    L3 --> IMG
+    L3 --> SND
+    L3 --> FU
+
+    OD --> PT
+    L1 --> CF
+    L1 --> BTN
+    L2 --> FU

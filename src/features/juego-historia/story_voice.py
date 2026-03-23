@@ -49,11 +49,12 @@ def get_required_words(config_path, sujetos_seleccionados, acciones_seleccionada
     return list(dict.fromkeys(required))  # unique, order preserved
 
 
-def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on_listening_started=None):
+def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on_listening_started=None,
+                         silence_seconds=5.0):
     """
     Listen to the microphone for up to phrase_time_limit seconds and return transcribed text.
-    Uses a longer pause_threshold to avoid cutting phrases. Call on_listening_started (e.g. to
-    show "Ahora puedes hablar") only after listening has actually started.
+    Uses a configurable silence duration so that only sustained silence ends the phrase,
+    avoiding cuts mid-sentence when the speaker pauses briefly.
 
     Args:
         timeout: Max seconds to wait for speech to start.
@@ -61,25 +62,49 @@ def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on
         language: Language code for recognition (es-ES for Spanish).
         on_listening_started: Optional callback invoked after listening has started (so the UI
             can show "now you can talk" without missing the beginning of speech).
+        silence_seconds: Seconds of continuous silence required before stopping the recording.
+            Higher values (e.g. 4.0–6.0) reduce mid-sentence cuts; lower values end sooner.
 
     Returns:
         Transcribed text string, or None if nothing heard or recognition failed.
     """
     recognizer = sr.Recognizer()
-    # Avoid cutting phrases: require longer silence before stopping (default 0.8 is too short)
-    recognizer.pause_threshold = 1.3
+    # Emparejar configuración con el flujo que ya funciona mejor en otros juegos.
+    # `adjust_for_ambient_noise()` terminará recalibrando, pero este umbral ayuda como punto de partida.
+    recognizer.energy_threshold = 300
+    # Require sustained silence before stopping: avoids cutting when someone pauses briefly
+    recognizer.pause_threshold = max(1.0, float(silence_seconds))
     recognizer.phrase_threshold = 0.3
+    # Keep a bit of non-speaking audio so we don't clip the very end of the phrase
+    recognizer.non_speaking_duration = 0.5
+    recognizer.operation_timeout = None  # Evitar timeouts raros en operaciones de escucha
     recognizer.dynamic_energy_threshold = True
+    # Permite cambiar el micrófono si el dispositivo 2 no coincide en tu PC.
+    # Si no existe la variable, usamos el mismo índice que ya viene en el juego.
+    device_index = int(os.environ.get("LINGO_MIC_DEVICE_INDEX", "2"))
     try:
-        microphone = sr.Microphone(device_index=3)
+        microphone = sr.Microphone(device_index=device_index)
+        print(f"Usando micrófono (device_index={device_index}) para juego-historia.")
     except Exception as e:
-        print(f"Error al inicializar micrófono (dispositivo 3): {e}")
-        return None
+        # Fallback a "dispositivo por defecto" si el índice no es válido.
+        try:
+            microphone = sr.Microphone()
+            print(f"Advertencia: no se pudo abrir el micrófono index={device_index}. Usando dispositivo por defecto.")
+        except Exception:
+            print(f"Error al inicializar micrófono: {e}")
+            return None
     try:
         with microphone as source:
-            recognizer.adjust_for_ambient_noise(source, duration=0.8)
+            # Si el stream no se abrió correctamente, evitamos que SpeechRecognition
+            # lance errores internos al cerrar un stream nulo.
+            if getattr(source, "stream", None) is None:
+                print("Error al ajustar ruido ambiente: el micrófono no se inicializó correctamente (stream vacío).")
+                print("Revisa la configuración de audio antes de volver a intentar.")
+                return None
+            recognizer.adjust_for_ambient_noise(source, duration=1.0)
     except Exception as e:
         print(f"Error al ajustar ruido ambiente: {e}")
+        return None
 
     result_holder = [None]
     exception_holder = [None]
@@ -87,6 +112,11 @@ def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on
     def _listen_thread():
         try:
             with microphone as source:
+                if getattr(source, "stream", None) is None:
+                    exception_holder[0] = RuntimeError(
+                        "El micrófono no se inicializó correctamente (stream vacío) al intentar escuchar."
+                    )
+                    return
                 audio = recognizer.listen(
                     source, timeout=timeout, phrase_time_limit=phrase_time_limit
                 )
@@ -114,9 +144,23 @@ def listen_and_transcribe(timeout=10, phrase_time_limit=10, language="es-ES", on
     if audio is None:
         return None
     try:
-        text = recognizer.recognize_google(audio, language=language)
-        return (text or "").strip() or None
-    except sr.UnknownValueError:
+        # Probar acentos alternativos si el español del usuario no coincide con `es-ES`.
+        candidate_languages = [language]
+        if (language or "").lower() in {"es-es", "es_es", "es-pt", "es"}:
+            # es-419 suele cubrir mejor gran parte de español latino.
+            if "es-419" not in candidate_languages:
+                candidate_languages.append("es-419")
+
+        last_unknown = None
+        for lang in candidate_languages:
+            try:
+                text = recognizer.recognize_google(audio, language=lang)
+                return (text or "").strip() or None
+            except sr.UnknownValueError as e_unknown:
+                last_unknown = e_unknown
+                continue
+
+        # Si ninguna variante pudo entenderlo
         return None
     except sr.RequestError as e:
         print(f"Error del servicio de reconocimiento: {e}")

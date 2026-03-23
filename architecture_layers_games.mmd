@@ -1,0 +1,163 @@
+%% MagicboARd (Lingo) - Layered Architecture Diagram - 3 Games (Features)
+%% Layers: Presentation | Application | Domain | Infrastructure
+%% Rendered with Mermaid (e.g. VS Code Mermaid extension, mermaid.live)
+
+flowchart TB
+    subgraph LAYER_PRES["📺 PRESENTATION LAYER (UI / Views)"]
+        direction TB
+        subgraph P_CLASIF["Clasificación"]
+            P_CL_LEVELS["levels.py<br/>Level & mode selection<br/>Touchable cards, buttons"]
+            P_CL_GAME["game.py<br/>Ovals, figures, drag feedback<br/>cv2 drawing, pygame"]
+        end
+        subgraph P_HISTORIA["Juego-historia"]
+            P_H_SEL["selection.py<br/>Escenarios (touch)"]
+            P_H_VIEWS["views/<br/>selection_historias, selection_acciones,<br/>selection_lugares, voice_flow, vista_final"]
+            P_H_HELP["views/helpers.py<br/>put_text_safe_historia"]
+        end
+        subgraph P_ABSURDOS["Absurdos visuales"]
+            P_AB_SEL["selection.py<br/>Tipo: Visuales / Auditivos"]
+            P_AB_GAME["game.py (UI)<br/>Screens, buttons, confetti<br/>put_text_safe, end screens"]
+        end
+    end
+
+    subgraph LAYER_APP["⚙️ APPLICATION LAYER (Flow / Use cases)"]
+        direction TB
+        subgraph A_CLASIF["Clasificación"]
+            A_CL_GAME["game.py<br/>juego_clasificacion()<br/>Main loop, touch→drop, scoring"]
+        end
+        subgraph A_HISTORIA["Juego-historia"]
+            A_H_VOICE["story_voice.py<br/>listen_and_transcribe()<br/>verify_story_ollama()"]
+            A_H_FLOW["voice_flow.py<br/>run_historia_voice_flow()<br/>Listen → Transcribe → Ollama → Result"]
+        end
+        subgraph A_ABSURDOS["Absurdos visuales"]
+            A_AB_GAME["game.py<br/>juego_absurdos_reconocimiento_voz()<br/>Question loop, voice input, answer check"]
+        end
+    end
+
+    subgraph LAYER_DOM["📐 DOMAIN LAYER (Rules / Validation)"]
+        direction TB
+        subgraph D_CLASIF["Clasificación"]
+            D_CL_RULES["Figuras & colores<br/>Match oval (forma/color)<br/>Collision, scoring rules"]
+        end
+        subgraph D_HISTORIA["Juego-historia"]
+            D_H_WORDS["get_required_words()<br/>palabras_imagenes.json<br/>Required words in story"]
+            D_H_VERIFY["Ollama story verification<br/>Contains required words?"]
+        end
+        subgraph D_ABSURDOS["Absurdos visuales"]
+            D_AB_ANSWERS["respuestas_correctas.json<br/>Correct answers per question"]
+            D_AB_SIM["sentence-transformers<br/>Similarity (embedding match)"]
+        end
+    end
+
+    subgraph LAYER_INFRA["🔧 INFRASTRUCTURE LAYER (Shared)"]
+        direction TB
+        subgraph CORE["src/core"]
+            INFRA_OPENNI["openni_init.py<br/>Kinect device"]
+            INFRA_CALIB["calibrate_area, calibration<br/>coordenadas, dmax_map"]
+            INFRA_TOUCH["Touch detection<br/>depth ROI → centroids → view coords"]
+            INFRA_UI["ui_utils.py<br/>scale_to_videobeam, draw_logo"]
+            INFRA_FONT["font_utils.py<br/>put_text_ubuntu, get_ubuntu_font"]
+            INFRA_DETECT["detection.py<br/>detect_color_and_shape (HSV)"]
+        end
+        subgraph COMP["src/components"]
+            INFRA_BTN["rectangular_button, circular_button<br/>draw_*, is_point_in_*"]
+        end
+        subgraph CONFIG["Config & assets"]
+            INFRA_CFG["ultima_configuracion_coordenadas.json<br/>dmax_map.txt"]
+            INFRA_ASSETS["assets (images, sounds)"]
+        end
+        subgraph EXTERNAL["External"]
+            INFRA_YOLO["detection_logic (YOLO)<br/>Object detection"]
+            INFRA_SR["SpeechRecognition + PyAudio"]
+            INFRA_OLLAMA["Ollama Client"]
+            INFRA_ST["SentenceTransformer model"]
+        end
+    end
+
+    %% Presentation → Application
+    P_CL_LEVELS --> A_CL_GAME
+    P_CL_GAME --> A_CL_GAME
+    P_H_SEL --> A_H_FLOW
+    P_H_VIEWS --> A_H_FLOW
+    P_H_VIEWS --> A_H_VOICE
+    P_AB_SEL --> A_AB_GAME
+    P_AB_GAME --> A_AB_GAME
+
+    %% Application → Domain
+    A_CL_GAME --> D_CL_RULES
+    A_H_VOICE --> D_H_WORDS
+    A_H_VOICE --> D_H_VERIFY
+    A_H_FLOW --> D_H_VERIFY
+    A_AB_GAME --> D_AB_ANSWERS
+    A_AB_GAME --> D_AB_SIM
+
+    %% Application & Presentation → Infrastructure
+    A_CL_GAME --> INFRA_CALIB
+    A_CL_GAME --> INFRA_TOUCH
+    A_CL_GAME --> INFRA_DETECT
+    P_CL_LEVELS --> INFRA_YOLO
+    P_CL_LEVELS --> INFRA_UI
+    P_CL_GAME --> INFRA_FONT
+    P_CL_GAME --> INFRA_BTN
+
+    A_H_FLOW --> INFRA_UI
+    A_H_VOICE --> INFRA_SR
+    A_H_VOICE --> INFRA_OLLAMA
+    P_H_VIEWS --> INFRA_FONT
+    P_H_VIEWS --> INFRA_BTN
+    D_H_WORDS --> INFRA_CFG
+    P_H_VIEWS --> INFRA_ASSETS
+
+    A_AB_GAME --> INFRA_TOUCH
+    A_AB_GAME --> INFRA_SR
+    A_AB_GAME --> INFRA_ST
+    P_AB_GAME --> INFRA_FONT
+    P_AB_GAME --> INFRA_BTN
+    D_AB_ANSWERS --> INFRA_CFG
+    D_AB_SIM --> INFRA_ST
+
+    %% All games use device + core init
+    INFRA_OPENNI --> INFRA_CALIB
+    INFRA_CALIB --> INFRA_TOUCH
+
+    %% Styling
+    classDef presentation fill:#e3f2fd
+    classDef application fill:#fff8e1
+    classDef domain fill:#e8f5e9
+    classDef infrastructure fill:#fce4ec
+    class P_CL_LEVELS,P_CL_GAME,P_H_SEL,P_H_VIEWS,P_H_HELP,P_AB_SEL,P_AB_GAME presentation
+    class A_CL_GAME,A_H_VOICE,A_H_FLOW,A_AB_GAME application
+    class D_CL_RULES,D_H_WORDS,D_H_VERIFY,D_AB_ANSWERS,D_AB_SIM domain
+    class INFRA_OPENNI,INFRA_CALIB,INFRA_TOUCH,INFRA_UI,INFRA_FONT,INFRA_DETECT,INFRA_BTN,INFRA_CFG,INFRA_ASSETS,INFRA_YOLO,INFRA_SR,INFRA_OLLAMA,INFRA_ST infrastructure
+
+---
+
+%% Alternative: Layer cake view (same 4 layers, 3 games)
+flowchart LR
+    subgraph INFRA["🔧 Infrastructure"]
+        I1["core: openni, calibration, touch, ui_utils, font_utils, detection"]
+        I2["components: buttons"]
+        I3["config, assets, YOLO, SpeechRecognition, Ollama, SentenceTransformer"]
+    end
+
+    subgraph DOM["📐 Domain"]
+        D1["Clasificación: rules, scoring"]
+        D2["Historia: required words, Ollama verify"]
+        D3["Absurdos: respuestas_correctas, similarity"]
+    end
+
+    subgraph APP["⚙️ Application"]
+        A1["Clasificación: game.py loop"]
+        A2["Historia: story_voice + voice_flow"]
+        A3["Absurdos: game.py voice loop"]
+    end
+
+    subgraph PRES["📺 Presentation"]
+        P1["Clasificación: levels + game UI"]
+        P2["Historia: selection + views"]
+        P3["Absurdos: selection + game screens"]
+    end
+
+    INFRA --> DOM
+    DOM --> APP
+    APP --> PRES

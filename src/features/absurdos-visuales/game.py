@@ -463,10 +463,15 @@ def draw_logo(screen, view_width, view_height):
         return False
 
 
-def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, model=None):
+def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, model=None, existing_window_name=None):
     """
     Juego de reconocimiento de voz para absurdos lógicos.
     Muestra una imagen aleatoria y el usuario debe describir qué está mal usando voz.
+
+    Args:
+        existing_window_name: Si se indica (ej. "Menú de Juegos"), se reutiliza esa ventana
+            en el videobeam. Al salir con X no se cierra la ventana para que el menú
+            pueda actualizarla y mostrarse de inmediato.
     """
     # Configurar logging
     logging.basicConfig(
@@ -509,11 +514,30 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         print(f"Error: El archivo {json_path} no es un JSON válido")
         return
     
-    # Crear ventana una sola vez (fuera del bucle)
-    window_name = "Juego de Reconocimiento de Voz"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.moveWindow(window_name, 1920, 0)
-    
+    # Usar ventana existente (videobeam) o crear una nueva
+    window_name = existing_window_name if existing_window_name else "Juego de Reconocimiento de Voz"
+    use_shared_window = bool(existing_window_name)
+    window_exists = False
+    if use_shared_window:
+        try:
+            prop = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+            if prop >= 0:
+                window_exists = True
+        except Exception:
+            pass
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.waitKey(50)
+
+    def _close_window_if_own():
+        """Cierra la ventana solo si es propia del juego (no la compartida con el menú)."""
+        if not use_shared_window:
+            try:
+                cv2.destroyWindow(window_name)
+            except Exception:
+                pass
+
     # Variable para controlar si es la primera imagen (solo TTS en la primera)
     primera_imagen = True
     
@@ -819,20 +843,24 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         # Inicializar reconocimiento de voz (pero no escuchar todavía)
         try:
             recognizer = sr.Recognizer()
-            # Configurar reconocedor para mejor precisión
+            # Configurar reconocedor para mejor precisión y tiempos más acotados
             recognizer.energy_threshold = 300  # Umbral de energía inicial
             recognizer.dynamic_energy_threshold = True  # Ajustar dinámicamente
-            recognizer.pause_threshold = 1.5  # Más tiempo de silencio después del habla para capturar mejor el final
+            # Requerir 5 segundos de silencio sostenido antes de cortar la frase
+            recognizer.pause_threshold = 5.0
+            recognizer.phrase_threshold = 0.3
+            # Mantener un poco de audio sin voz para no recortar el final
+            recognizer.non_speaking_duration = 0.5
             recognizer.operation_timeout = None  # Sin timeout en operaciones
             
-            # Usar dispositivo de audio 3
+            # Usar dispositivo de audio 2
             try:
-                microphone = sr.Microphone(device_index=3)
+                microphone = sr.Microphone(device_index=2)
             except Exception as e:
-                print(f"Error al inicializar micrófono (dispositivo 3): {e}")
-                cv2.destroyWindow(window_name)
+                print(f"Error al inicializar micrófono (dispositivo 2): {e}")
+                _close_window_if_own()
                 continue
-            print(f"Usando micrófono (dispositivo 3): {microphone}")
+            print(f"Usando micrófono (dispositivo 2): {microphone}")
         except OSError as e:
             if "PyAudio" in str(e) or "pyaudio" in str(e).lower():
                 print("Error: PyAudio no está instalado. Instalando...")
@@ -840,12 +868,12 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 print("O si eso no funciona, instala desde: https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio")
             else:
                 print(f"Error al inicializar reconocimiento de voz: {e}")
-            cv2.destroyWindow(window_name)
+            _close_window_if_own()
             continue
         except Exception as e:
             print(f"Error al inicializar reconocimiento de voz: {e}")
             print("Asegúrate de que PyAudio esté instalado: uv pip install pyaudio")
-            cv2.destroyWindow(window_name)
+            _close_window_if_own()
             continue
         
         # Función para detectar si se tocó el botón circular
@@ -892,11 +920,11 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                             else:
                                 print(f"Error al descargar/cargar modelo después de {max_retries} intentos: {e2}")
                                 print("El juego continuará pero no podrá evaluar respuestas correctamente.")
-                                cv2.destroyWindow(window_name)
+                                _close_window_if_own()
                                 modelo_cargado_correctamente = False
                 except Exception as e3:
                     print(f"Error crítico al cargar modelo: {e3}")
-                    cv2.destroyWindow(window_name)
+                    _close_window_if_own()
                     modelo_cargado_correctamente = False
         else:
             print("✓ Usando modelo de sentence-transformers pre-cargado")
@@ -1078,11 +1106,8 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                     depth_stream.stop()
                                 except:
                                     pass
-                                # Cerrar ventana y salir
-                                try:
-                                    cv2.destroyWindow(window_name)
-                                except:
-                                    pass
+                                # No cerrar ventana si es la del menú (el menú la actualizará en el videobeam)
+                                _close_window_if_own()
                                 return  # Volver al menú principal
                             
                             # Verificar si se tocó el botón circular (solo si está habilitado)
@@ -1108,33 +1133,9 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                             shadow=True
                                         )
                                         
-                                        # Agregar franja "Escuchando..." debajo del botón
-                                        mensaje_escuchando = "Escuchando..."
-                                        font_escuchando = cv2.FONT_HERSHEY_DUPLEX
-                                        font_scale_escuchando = 0.9
-                                        thickness_escuchando = 2
-                                        text_size_escuchando, _ = cv2.getTextSize(mensaje_escuchando, font_escuchando, font_scale_escuchando, thickness_escuchando)
-                                        text_x_escuchando = (view_width - text_size_escuchando[0]) // 2
-                                        text_y_escuchando = circle_center_y + circle_radius + 50  # Debajo del botón
-                                        
-                                        # Color azul oscuro para indicar que está escuchando
-                                        color_fondo_escuchando = (200, 100, 0)  # Azul oscuro (en BGR)
-                                        
-                                        # Dibujar franja de fondo con color azul (siempre en la parte inferior)
-                                        franja_y_inicio = text_y_escuchando - 25
-                                        franja_y_fin = view_height - 1  # Llegar hasta el borde inferior
-                                        cv2.rectangle(current_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                                     color_fondo_escuchando, -1)  # Fondo azul
-                                        cv2.rectangle(current_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                                     (255, 255, 255), 2)  # Borde blanco
-                                        
-                                        # Texto siempre en blanco (usar función segura para caracteres acentuados)
-                                        put_text_safe(current_screen, mensaje_escuchando, (text_x_escuchando + 2, text_y_escuchando + 2), 
-                                                   font_escuchando, font_scale_escuchando, (0, 0, 0), thickness_escuchando + 1)  # Sombra negra
-                                        put_text_safe(current_screen, mensaje_escuchando, (text_x_escuchando, text_y_escuchando), 
-                                                   font_escuchando, font_scale_escuchando, (255, 255, 255), thickness_escuchando)  # Texto blanco
-                                        
-                                        # Mostrar pantalla actualizada
+                                        # Mostrar solo el estado del botón presionado aquí.
+                                        # El mensaje "Escuchando..." se mostrará más tarde,
+                                        # cuando el micrófono esté realmente listo para grabar.
                                         videobeam_screen_scaled = scale_to_videobeam(current_screen)
                                         cv2.imshow(window_name, videobeam_screen_scaled)
                                         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -1164,10 +1165,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 if key == ord('q'):
                     rgb_stream.stop()
                     depth_stream.stop()
-                    try:
-                        cv2.destroyWindow(window_name)
-                    except:
-                        pass
+                    _close_window_if_own()
                     return
             
             # Si el botón fue presionado, ahora sí escuchar audio
@@ -1185,17 +1183,85 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                     print(f"⚠ Error al ajustar ruido ambiente: {e}")
                     # Continuar de todas formas
                 
+                # En este punto el micrófono ya está calibrado.
+                # Ahora sí mostramos la franja "Escuchando..." en pantalla.
+                listening_screen = videobeam_screen.copy()
+                draw_circular_button(
+                    listening_screen,
+                    circle_center_x, circle_center_y, circle_radius,
+                    "Hablar",
+                    bg_color=(0, 150, 0),  # Darker green
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.3,
+                    bold=True,
+                    shadow=True
+                )
+                mensaje_escuchando = "Escuchando..."
+                font_escuchando = cv2.FONT_HERSHEY_DUPLEX
+                font_scale_escuchando = 0.9
+                thickness_escuchando = 2
+                text_size_escuchando, _ = cv2.getTextSize(
+                    mensaje_escuchando,
+                    font_escuchando,
+                    font_scale_escuchando,
+                    thickness_escuchando
+                )
+                text_x_escuchando = (view_width - text_size_escuchando[0]) // 2
+                text_y_escuchando = circle_center_y + circle_radius + 50  # Debajo del botón
+                color_fondo_escuchando = (200, 100, 0)  # Azul oscuro (en BGR)
+                franja_y_inicio = text_y_escuchando - 25
+                franja_y_fin = view_height - 1
+                cv2.rectangle(
+                    listening_screen,
+                    (0, franja_y_inicio),
+                    (view_width, franja_y_fin),
+                    color_fondo_escuchando,
+                    -1
+                )
+                cv2.rectangle(
+                    listening_screen,
+                    (0, franja_y_inicio),
+                    (view_width, franja_y_fin),
+                    (255, 255, 255),
+                    2
+                )
+                put_text_safe(
+                    listening_screen,
+                    mensaje_escuchando,
+                    (text_x_escuchando + 2, text_y_escuchando + 2),
+                    font_escuchando,
+                    font_scale_escuchando,
+                    (0, 0, 0),
+                    thickness_escuchando + 1
+                )
+                put_text_safe(
+                    listening_screen,
+                    mensaje_escuchando,
+                    (text_x_escuchando, text_y_escuchando),
+                    font_escuchando,
+                    font_scale_escuchando,
+                    (255, 255, 255),
+                    thickness_escuchando
+                )
+                videobeam_screen_scaled = scale_to_videobeam(listening_screen)
+                cv2.imshow(window_name, videobeam_screen_scaled)
+                # No volvemos a tocar aquí el modo de ventana para evitar
+                # recreaciones o parpadeos; ya está en fullscreen desde antes.
+                cv2.waitKey(200)
+                
                 # Escuchar audio con detección de silencio
                 print("=" * 50)
                 print("INICIANDO CAPTURA DE AUDIO")
                 print("=" * 50)
-                print("Esperando audio (timeout: 20 segundos, límite de frase: 25 segundos)...")
+                print("Esperando audio (timeout: 10 segundos, límite de frase: 10 segundos)...")
                 print("Habla ahora...")
                 
                 try:
                     with microphone as source:
                         # Escuchar hasta que detecte que terminó de hablar
-                        audio = recognizer.listen(source, timeout=20, phrase_time_limit=25)
+                        audio = recognizer.listen(source, timeout=10, phrase_time_limit=10)
                         if audio:
                             duracion = len(audio.frame_data) / audio.sample_rate
                             print(f"✓ Audio capturado exitosamente!")
@@ -1556,17 +1622,13 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                             if boton_tocado == "menu":
                                                 # Volver al menú principal
                                                 accion_seleccionada = "menu"
-                                                # Cerrar solo la ventana del juego (no todas las ventanas)
-                                                try:
-                                                    cv2.destroyWindow(window_name)
-                                                except:
-                                                    pass
+                                                _close_window_if_own()
                                                 salir_bucle = True
                                                 break
                                             elif boton_tocado == "siguiente":
                                                 # Continuar con siguiente absurdo
                                                 accion_seleccionada = "siguiente"
-                                                cv2.destroyWindow(window_name)
+                                                _close_window_if_own()
                                                 salir_bucle = True
                                                 break
                         
@@ -1586,10 +1648,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if key == ord('q'):
                             rgb_stream.stop()
                             depth_stream.stop()
-                            try:
-                                cv2.destroyWindow(window_name)
-                            except:
-                                pass
+                            _close_window_if_own()
                             return
                 finally:
                     # Asegurar que los streams se detengan
@@ -1601,11 +1660,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 
                 # Verificar qué acción se seleccionó (después del bloque try-finally, dentro del if es_correcta)
                 if accion_seleccionada == "menu":
-                    # Cerrar solo la ventana del juego (no todas las ventanas)
-                    try:
-                        cv2.destroyWindow(window_name)
-                    except:
-                        pass
+                    _close_window_if_own()
                     return  # Volver al menú principal - salir completamente de la función
                 elif accion_seleccionada == "siguiente":
                     break  # Salir del bucle de intentos y continuar con siguiente absurdo

@@ -185,31 +185,34 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
     hablar_button_bounds_final = None  # Se inicializará cuando se dibuje
     
     # Cargar imágenes de sujetos, acciones y lugares
+    # Sujetos: Niño, Niña, Cocinera, Policia, Doctor, Maestra
     historias = [
         {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Niño.png"},
         {"nombre": "Niña", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Niña.png"},
-        {"nombre": "Doctor", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/doctor.png"},
-        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"},
+        {"nombre": "Cocinera", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinera.png"},
         {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Policia.png"},
-        {"nombre": "Perro", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Perro.png"}
+        {"nombre": "Doctor", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Doctor.png"},
+        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"}
     ]
     
+    # Acciones: Ayudar, Trabajar, Cocinar, Correr, Llamar, Jugar
     acciones = [
-        {"nombre": "Dar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Dar.png"},
-        {"nombre": "Ayudar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
-        {"nombre": "Correr", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
-        {"nombre": "Jugar", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Jugar.png"},
+        {"nombre": "Ayudar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
+        {"nombre": "Trabajar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"},
+        {"nombre": "Cocinar", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinar.png"},
+        {"nombre": "Correr", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
         {"nombre": "Llamar", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Llamar.png"},
-        {"nombre": "Trabajar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"}
+        {"nombre": "Jugar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Jugar.png"}
     ]
     
+    # Lugares: Casa, Clinica, Escuela, Estacion-policia, Parque, Cocina
     lugares = [
-        {"nombre": "Calle", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Calle.png"},
+        {"nombre": "Casa", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
         {"nombre": "Clinica", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Clinica.png"},
-        {"nombre": "Estacion-Policia", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
-        {"nombre": "Escuela", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
-        {"nombre": "Casa", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
-        {"nombre": "Parque", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Parque.png"}
+        {"nombre": "Escuela", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
+        {"nombre": "Estacion-policia", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
+        {"nombre": "Parque", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Parque.png"},
+        {"nombre": "Cocina", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Cocina.png"}
     ]
     
     # Crear diccionarios para buscar imágenes

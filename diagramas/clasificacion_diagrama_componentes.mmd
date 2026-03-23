@@ -1,0 +1,46 @@
+---
+title: Diagrama de componentes — feature clasificacion
+---
+%% COMPONENTES UML aproximado. Alcance: src/features/clasificacion + dependencias.
+%% Cursor: vista previa Mermaid. Forma [[...]] = caja tipo componente.
+flowchart TB
+    classDef externo fill:#f0f0f0,stroke:#666666,stroke-dasharray: 6 4,color:#333
+    classDef comp fill:#e8f4fc,stroke:#0d47a1,stroke-width:2px,color:#0d47a1
+
+    subgraph PAQUETE["Paquete: src/features/clasificacion/"]
+        direction TB
+        GAME[["Componente: game.py<br/>Responsabilidad: juego_clasificacion()<br/>ovalos, depth, piezas virtuales o fisicas HSV"]]:::comp
+        LEVELS[["Componente: levels.py<br/>Responsabilidad: flujo UI niveles y escenarios<br/>vista rectangulos + YOLO en piezas fisicas"]]:::comp
+    end
+
+    MENU[["Componente externo: menu.py<br/>Orquesta entrada al juego"]]:::externo
+    DETLOG[["Componente externo: detection_logic.py<br/>YOLO12 ObjectDetector, draw_shine_effect"]]:::externo
+    CORECAL[["Componente externo: src/core/calibration.py"]]:::externo
+    COREDET[["Componente externo: src/core/detection.py"]]:::externo
+    COREFONT[["Componente externo: src/core/font_utils.py"]]:::externo
+    UIBTN[["Componente externo: src/components<br/>botones rectangulares"]]:::externo
+    CONF[["Componente externo: src/features/confetti"]]:::externo
+    CFG[["Config: JSON y dmax_map<br/>coordenadas, traducciones"]]:::externo
+    MEDIA[["Recursos: images/, sounds/"]]:::externo
+    HW[["Dispositivo: OpenNI2 Kinect<br/>RGB + profundidad"]]:::externo
+    YOLOW[["Artefacto: pesos YOLO best.pt<br/>usado por detection_logic"]]:::externo
+
+    MENU -- "importa, ejecuta niveles" --> LEVELS
+    MENU -. "opcional: juego_clasificacion<br/>flujo no usado en menu principal" .-> GAME
+
+    LEVELS -- "usa" --> DETLOG
+    LEVELS -- "usa" --> COREFONT
+    LEVELS -- "usa" --> UIBTN
+    LEVELS -- "usa" --> CONF
+    LEVELS -- "streams" --> HW
+    LEVELS -- "lee rutas" --> MEDIA
+    LEVELS -- "coordenadas via menu" --> CFG
+
+    GAME -- "usa" --> CORECAL
+    GAME -- "usa piezas fisicas" --> COREDET
+    GAME -- "usa" --> COREFONT
+    GAME -- "streams" --> HW
+    GAME -- "lee" --> CFG
+    GAME -- "audio" --> MEDIA
+
+    DETLOG -- "carga modelo" --> YOLOW

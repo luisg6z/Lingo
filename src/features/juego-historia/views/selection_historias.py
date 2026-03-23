@@ -230,13 +230,14 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
                 close_card_detection_y_historias <= y_touch <= close_card_detection_y_historias + close_card_detection_h_historias)
     
     # Definir las 6 historias con las imágenes de sujetos
+    # (Niño, Niña, Cocinera, Policia, Doctor, Maestra)
     historias = [
-        {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/niño.png"},
+        {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Niño.png"},
         {"nombre": "Niña", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Niña.png"},
-        {"nombre": "Doctor", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Doctor.png"},
-        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"},
-        {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/policia.png"},
-        {"nombre": "Perro", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/perro.png"}
+        {"nombre": "Cocinera", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinera.png"},
+        {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Policia.png"},
+        {"nombre": "Doctor", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Doctor.png"},
+        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"}
     ]
     
     # Cargar imágenes de las historias si existen

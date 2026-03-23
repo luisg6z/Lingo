@@ -280,7 +280,8 @@
         "no es correcto, la pizza no puede tener hielo",
         "está mal porque la pizza no puede tener hielo",
         "una pizza no puede tener hielo",
-        "las pizzas no tienen hielo"
+        "está mal, la pizza tiene hielo",
+        "porque la pizza tiene hielo"
       ]
     },
     {
@@ -392,7 +393,9 @@
         "las zanahorias son naranjas no moradas",
         "no es correcto, debería ser naranja",
         "está mal porque las zanahorias no son moradas",
-        "una zanahoria no puede ser morada"
+        "una zanahoria no puede ser morada",
+        "está mal, la zanahoria es morada",
+        "porque la zanahoria es morada"
       ]
     },
     {
@@ -419,6 +422,7 @@
         "está mal porque el zapato no se puede comer",
         "un zapato no se puede comer",
         "los zapatos no se pueden comer",
+        "El zapato está en el plato",
         "el zapato no es comida"
       ]
     }

@@ -48,6 +48,24 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
             screen[y, :] = [b, g, r]
         return screen
 
+    # Asegurar que la ventana esté siempre en pantalla completa en el videobeam
+    try:
+        visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+        window_exists = visible >= 0
+    except Exception:
+        window_exists = False
+
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        try:
+            cv2.moveWindow(window_name, 1920, 0)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except Exception:
+            pass
+
     sv = get_historia_story_voice()
     get_required_words = sv.get_required_words
     listen_and_transcribe = sv.listen_and_transcribe
