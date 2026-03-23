@@ -257,6 +257,8 @@ CRITERIOS DE EVALUACIÓN:
 
 5. CIERRE/CONCLUSIÓN:La historia no puede quedar a medias; debe tener un final.
 
+6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
+
 
 
 INSTRUCCIONES PARA LOS "TIPS":
