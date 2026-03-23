@@ -472,12 +472,26 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         thickness = 3
         max_width = view_width - 80
         
-        # Get parts from result (fragmentos de la historia que representan
-        # sujetos, acciones y lugares usados)
-        parts = result.get("parts", {})
-        subjects_list = parts.get("subjects", [])
-        actions_list = parts.get("actions", [])
-        places_list = parts.get("places", [])
+        # Get required words directly from config to only color those target words
+        subjects_list = []
+        actions_list = []
+        places_list = []
+        try:
+            import json
+            with open(config_path, "r", encoding="utf-8") as f:
+                data_palabras = json.load(f)
+            for s in (sujetos_seleccionados or []):
+                subjects_list.extend(data_palabras.get("sujetos", {}).get(s, []))
+            for a in (acciones_seleccionadas or []):
+                actions_list.extend(data_palabras.get("acciones", {}).get(a, []))
+            for p in (lugares_seleccionados or []):
+                places_list.extend(data_palabras.get("lugares", {}).get(p, []))
+        except Exception:
+            # Fallback a lo que devuelva Ollama
+            parts = result.get("parts", {})
+            subjects_list = parts.get("subjects", [])
+            actions_list = parts.get("actions", [])
+            places_list = parts.get("places", [])
         
         # Create normalized sets for matching
         def normalize_word(word):
