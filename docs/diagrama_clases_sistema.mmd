@@ -1,0 +1,61 @@
+classDiagram
+    class main {
+        +load_sentence_transformer_model() : SentenceTransformer
+        +main()
+    }
+    
+    class core_openni_init {
+        +initialize_openni2() : tuple
+    }
+    
+    class features_menu {
+        +mostrar_menu_juegos(device, sentence_transformer_model)
+        -draw_close_card_main(screen, elevated, muted)
+        -detectar_close_card_touch_main(x_touch, y_touch)
+        -draw_game_cards(screen, game_positions, elevated_card)
+        -detectar_juego_seleccionado(x_touch, y_touch, game_positions)
+        -mostrar_mensaje_juego(nombre_juego)
+    }
+    
+    class core_calibration {
+        +load_and_validate_dmax_map(coordenadas)
+    }
+    
+    class core_ui_utils {
+        +scale_to_videobeam(screen)
+        +draw_logo(screen, width, height)
+    }
+    
+    class components {
+        +draw_rectangular_button()
+    }
+
+    class features_clasificacion_levels {
+        +mostrar_seleccion_niveles_clasificacion(device, coordenadas, dmax_map, dmin_map, draw_logo, existing_window_name)
+    }
+    
+    class features_juego_historia_selection {
+        +mostrar_seleccion_escenarios_historia()
+    }
+    
+    class features_juego_historia_views {
+        +mostrar_seleccion_historias()
+    }
+    
+    class features_absurdos_visuales_game {
+        +juego_absurdos_reconocimiento_voz()
+    }
+
+    %% Relaciones desde Main
+    main --> core_openni_init : Initializes OpenNI2
+    main --> features_menu : Calls mostrar_menu_juegos()
+
+    %% Relaciones desde Menu
+    features_menu --> core_calibration : Uses load_and_validate_dmax_map()
+    features_menu --> core_ui_utils : Uses scale_to_videobeam() & draw_logo()
+    features_menu --> components : Imports draw_rectangular_button
+    
+    features_menu --> features_clasificacion_levels : Routes to Clasificacion
+    features_menu --> features_juego_historia_selection : Routes to Historia (selection)
+    features_menu --> features_juego_historia_views : Routes to Historia (views)
+    features_menu --> features_absurdos_visuales_game : Routes to Absurdos Visuales

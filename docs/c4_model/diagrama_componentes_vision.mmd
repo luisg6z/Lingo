@@ -1,0 +1,31 @@
+flowchart TD
+    %% Estilos C4 Model
+    classDef component fill:#85bbf0,color:#000000,stroke:#2b6bb0,stroke-width:2px;
+    classDef container fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px;
+    classDef db fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px,shape:cylinder;
+
+    Kinect["📷 Sensor Kinect"]:::container
+    C_Datos["📁 Almacenamiento Local"]:::db
+    C_Juegos["🎮 Motor de Juegos"]:::container
+
+    subgraph VisionPipeline ["👁️ Pipeline de Visión / Toques (C4 Componentes)"]
+        style VisionPipeline fill:#ffffff,stroke:#1168bd,stroke-width:2px,stroke-dasharray: 5 5;
+
+        Comp_FrameReader["📥 Lector de Frames\n[Componente OpenNI2]\n\nCarga el frame de profundidad actual y extrae la ROI."]:::component
+        Comp_FilterVibration["🌊 Filtro de Vibraciones\n[Componente OpenCV]\n\nCompara con frame anterior y remueve fluctuaciones bruscas."]:::component
+        Comp_TouchMask["🎭 Generador de Máscara\n[Componente NumPy]\n\nCompara profundidad actual vs dmax_map para pintar toques."]:::component
+        Comp_Morphing["🧹 Filtro Morfológico\n[Componente OpenCV]\n\nAplica Median Blur y Apertura para eliminar falsos positivos."]:::component
+        Comp_Centroid["📍 Calculador de Centroides\n[Componente OpenCV]\n\nEncuentra las masas conectadas y su punto central (X,Y) ponderado."]:::component
+        Comp_HomogApply["📐 Aplicador de Homografía\n[Componente OpenCV]\n\nTransforma coordenadas de la cámara a coordenadas de proyección."]:::component
+    end
+
+    %% Relaciones
+    Kinect -.->|"Envía Stream profundidad"| Comp_FrameReader
+    C_Datos -->|"Carga dmax_matrix, homography_matrix"| Comp_TouchMask
+
+    Comp_FrameReader -->|"Frame ROI"| Comp_FilterVibration
+    Comp_FilterVibration -->|"Frame Filtrado"| Comp_TouchMask
+    Comp_TouchMask -->|"Máscara binaria"| Comp_Morphing
+    Comp_Morphing -->|"Máscara limpia"| Comp_Centroid
+    Comp_Centroid -->|"Coords Cámara X,Y"| Comp_HomogApply
+    Comp_HomogApply -->|"Coords Proyección viewport"| C_Juegos

@@ -1,0 +1,30 @@
+flowchart TD
+    %% Estilos C4 Model
+    classDef component fill:#85bbf0,color:#000000,stroke:#2b6bb0,stroke-width:2px;
+    classDef container fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px;
+    classDef db fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px,shape:cylinder;
+
+    Adulto["👤 Adulto / Supervisor"]:::container
+    Kinect["📷 Sensor Kinect"]:::container
+    C_Datos["📁 Almacenamiento Local"]:::db
+
+    subgraph Calibracion ["🛠️ Módulo de Calibración (C4 Componentes)"]
+        style Calibracion fill:#ffffff,stroke:#1168bd,stroke-width:2px,stroke-dasharray: 5 5;
+
+        Comp_Proyector["📽️ Proyector de Marcadores\n[Componente Python]\n\nGenera los cuadrados blancos en las esquinas para el videobeam."]:::component
+        Comp_Detector["👁️ Detector de Cuadrados\n[Componente OpenCV]\n\nUsa umbralización y contornos para ubicar marcadores en el frame RGB."]:::component
+        Comp_Homografia["📐 Calculador de Homografía\n[Componente OpenCV]\n\nMapea puntos de cámara a proyección con perspectiva corregida."]:::component
+        Comp_dmax["📊 Stat dmax_map Sampler\n[Componente NumPy]\n\nCalcula la moda estadística de profundidad (500 frames) de la mesa."]:::component
+        Comp_Writer["💾 Serializador Config\n[Componente JSON/IO]\n\nGuarda la matriz (.json) y el mapa (.txt) de calibración."]:::component
+    end
+
+    %% Relaciones
+    Adulto -->|"Inicia calibración"| Comp_Proyector
+    Kinect -.->|"Envía stream RGB"| Comp_Detector
+    Kinect -.->|"Envía stream Depth (500 frames)"| Comp_dmax
+
+    Comp_Proyector -->|"Muestra marcadores para la cámara"| Comp_Detector
+    Comp_Detector -->|"Coordenadas de Cámara"| Comp_Homografia
+    Comp_Homografia -->|"Matriz de Homografía"| Comp_Writer
+    Comp_dmax -->|"Mapa de profundidad de la mesa"| Comp_Writer
+    Comp_Writer -->|"Guarda dmax_map, homolog_matrix"| C_Datos

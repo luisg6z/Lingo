@@ -1,0 +1,44 @@
+graph TD
+    subgraph ClasificacionGame ["src/features/clasificacion/game.py"]
+        Init["Inicialización y Configuración"]
+        GeneradorVirtual["Generador de Figuras Virtuales"]
+        ProcesadorProfundidad["Procesamiento de Profundidad (Toques)"]
+        ProcesadorVision["Procesamiento Visión (Piezas Físicas)"]
+        GestorInteraccion["Gestor de Interacción y Movimiento"]
+        Validador["Validador de Clasificación"]
+        Renderizador["Renderizador Visual (OpenCV)"]
+        Audio["Sistema de Audio (Pygame)"]
+    end
+
+    %% Recursos Externos
+    ConfiguracionJSON[("ultima_configuracion_coordenadas.json")]
+    DmaxMap[("dmax_map (Calibración)")]
+    Kinect["Streams Kinect (RGB & Depth)"]
+    ModuloDeteccion["src.core.detection<br>detect_color_and_shape"]
+    ModuloCalibracion["src.core.calibration<br>load_and_validate_dmax_map"]
+
+    %% Relaciones de Inicialización
+    Init -->|Carga Coordenadas| ConfiguracionJSON
+    Init -->|Llama| ModuloCalibracion
+    ModuloCalibracion -->|Devuelve| DmaxMap
+    Init -.->|Si modo es virtual| GeneradorVirtual
+
+    %% Entrada de hardware
+    Kinect -->|Depth Frame| ProcesadorProfundidad
+    Kinect -->|RGB Frame| ProcesadorVision
+    
+    %% Flujo Principal
+    ProcesadorProfundidad -->|Puntos de Toque| GestorInteraccion
+    ProcesadorVision -.->|"Llama (Si piezas_fisicas)"| ModuloDeteccion
+    ModuloDeteccion -.->|Figuras y Colores| GestorInteraccion
+    
+    GeneradorVirtual -->|Estado Inicial Figuras| GestorInteraccion
+    GestorInteraccion -->|Figuras a Dibujar actualizadas| Validador
+    GestorInteraccion -->|Figuras a Dibujar| Renderizador
+    
+    %% Validación y Salida
+    Usuario(("Usuario (Teclado)")) -->|Tecla 'v'| Validador
+    Validador -->|Resultado Validación| Audio
+    Validador -->|Marcas de Error| Renderizador
+    
+    Renderizador -->|Muestra Ventanas| Videobeam["Pantalla Videobeam / Monitor"]

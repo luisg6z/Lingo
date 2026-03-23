@@ -1,0 +1,34 @@
+flowchart TD
+    %% Estilos C4 Model
+    classDef component fill:#85bbf0,color:#000000,stroke:#2b6bb0,stroke-width:2px;
+    classDef container fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px;
+    classDef external fill:#808080,color:#ffffff,stroke:#555555,stroke-width:2px;
+
+    C_Vision["👁️ Pipeline de Visión / Toques"]:::container
+    Proyector["📽️ Videoproyector"]:::container
+    Altavoces["🔊 Altavoces / Audio"]:::container
+    Modelo_AI["🤖 Sentence-Transformers"]:::external
+
+    subgraph MotorJuegos ["🎮 Motor de Juegos / UI (C4 Componentes)"]
+        style MotorJuegos fill:#ffffff,stroke:#1168bd,stroke-width:2px,stroke-dasharray: 5 5;
+
+        Comp_Eventos["🎯 Detector de Colisiones\n[Componente OpenCV]\n\nCompara el toque (X,Y) con las cajas de las cards / botones."]:::component
+        Comp_Escenas["🎭 Gestor de Estados/Escenas\n[Módulo Python]\n\nControla el cambio entre Menú, Clasificación y Absurdos."]:::component
+        Comp_UI["🖼️ Renderizador de Interfaz\n[Componente OpenCV/PyGame]\n\nSuperpone degradados, logos, y renders con animaciones (Elevado)"]:::component
+        Comp_Audio["🔊 Controlador de Audio\n[Componente Pygame Mixer]\n\nDispara sonidos de retroalimentación en aciertos o selecciones."]:::component
+        Comp_AI_Adapter["🤖 Adaptador AI\n[Componente Python]\n\nEncargado de formatear y consultar similitudes de texto."]:::component
+    end
+
+    %% Relaciones de Entrada
+    C_Vision -->|"Envía Coords Proyección"| Comp_Eventos
+
+    %% Relaciones Internas
+    Comp_Eventos -->|"Gatilla Selección / Click"| Comp_Escenas
+    Comp_Escenas -->|"Actualiza Estado Visual"| Comp_UI
+    Comp_Escenas -->|"Emite sonidos"| Comp_Audio
+    Comp_Escenas -->|"Llama para comparar similitud"| Comp_AI_Adapter
+
+    %% Salidas
+    Comp_UI -->|"Buffer Pantalla Completa"| Proyector
+    Comp_Audio -->|"Pistas estéreo"| Altavoces
+    Comp_AI_Adapter -->|"Consulta Embeddings"| Modelo_AI

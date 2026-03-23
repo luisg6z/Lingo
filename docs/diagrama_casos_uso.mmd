@@ -1,0 +1,53 @@
+flowchart LR
+    %% Definición de Actores
+    Jugador((Jugador / Niño))
+    Sensor((Sensor Kinect / OpenNI2))
+    
+    %% Sistema Principal
+    subgraph MagicboARd [Sistema MagicboARd]
+        direction TB
+        
+        %% Casos de Uso Generales
+        UC1([Interactuar con la mesa proyector])
+        UC2([Silenciar / Activar Audio de Fondo])
+        UC3([Navegar por el Menú Principal de Juegos])
+        
+        %% Subsistema de Minijuegos
+        subgraph Minijuegos [Minijuegos Interactivos]
+            direction TB
+            UC4([Jugar Clasificación de Objetos])
+            UC5([Jugar Absurdos Lógicos/Visuales])
+            UC6([Jugar Creación de Historias])
+            
+            %% Acciones específicas (Includes/Extends)
+            UC4_1([Seleccionar Nivel de Dificultad])
+            UC5_1([Usar Reconocimiento de Voz])
+            UC6_1([Seleccionar Escenarios y Sujetos])
+        end
+    end
+    
+    %% Relaciones Actor - Caso de Uso
+    Jugador -->|Realiza toques| UC1
+    Jugador -->|Toca ícono| UC2
+    Jugador -->|Observa y elige| UC3
+    
+    %% Relaciones Sensor - Caso de Uso
+    Sensor -.->|Detecta profundidad y mapeo| UC1
+    
+    %% Flujos del Menú a Juegos
+    UC3 -->|Selecciona juego| UC4
+    UC3 -->|Selecciona juego| UC5
+    UC3 -->|Selecciona juego| UC6
+    
+    %% Relaciones Include para detalles de juegos
+    UC4 -.->|include| UC4_1
+    UC5 -.->|include| UC5_1
+    UC6 -.->|include| UC6_1
+
+    %% Estilos de los nodos (opcional, para visualización)
+    classDef actor fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef usecase fill:#e1f5fe,stroke:#0288d1,stroke-width:2px, rx:20px, ry:20px;
+    classDef system fill:#ffffff,stroke:#999,stroke-width:2px,stroke-dasharray: 5 5;
+    
+    class Jugador,Sensor actor;
+    class UC1,UC2,UC3,UC4,UC5,UC6,UC4_1,UC5_1,UC6_1 usecase;

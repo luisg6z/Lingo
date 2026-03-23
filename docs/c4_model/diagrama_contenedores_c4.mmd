@@ -1,0 +1,43 @@
+flowchart TD
+    %% Estilos C4 Model
+    classDef person fill:#08427b,color:#ffffff,stroke:#052e56,stroke-width:2px,rx:15px,ry:15px;
+    classDef container fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px;
+    classDef external fill:#808080,color:#ffffff,stroke:#555555,stroke-width:2px;
+    classDef db fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px,shape:cylinder;
+
+    %% Nodos de Personajes / Usuarios (Externos)
+    Adulto["👤 Adulto / Supervisor\n[Persona]\n\nEnciende el equipo y calibra el software."]:::person
+    Nino["👤 Niño / Jugador\n[Persona]\n\nInteractúa tocando la mesa y hablando."]:::person
+
+    %% Sistemas y Hardware Externos
+    Kinect["📷 Sensor Kinect\n[Dispositivo]\n\nTransmite streams de video y malla de profundidad."]:::external
+    Proyector["📽️ Videoproyector\n[Dispositivo]\n\nProyecta la interfaz gráfica sobre la mesa."]:::external
+    Altavoces["🔊 Altavoces / Audio\n[Dispositivo]\n\nReproduce música y sonidos de acierto/error."]:::external
+    Modelo_AI["🤖 Sentence-Transformers\n[Librería de IA]\n\nModulo encargado de procesar la similitud semántica."]:::external
+
+    subgraph Magicboard ["📦 MagicboARd (Sistema de Software)"]
+        style Magicboard fill:#ffffff,stroke:#1168bd,stroke-width:2px,stroke-dasharray: 5 5;
+
+        C_Calibracion["🛠️ Módulo de Calibración\n[Script / Componente]\n\nProyecta patrones y calcula la Homografía y dmax_map."]:::container
+        C_Vision["👁️ Pipeline de Visión / Toques\n[Módulo de Pipeline]\n\nLee streams de Kinect, filtra ruido y deriva puntos (X,Y)."]:::container
+        C_Juegos["🎮 Motor de Juegos / UI\n[Módulo OpenCV/Pygame]\n\nGestiona Menú, renderiza cards, animaciones y flujos de juego."]:::container
+        C_Datos["📁 Almacenamiento Local\n[File System / JSON]\n\nGuarda configuraciones (.json, dmax_map) y assets de juegos."]:::db
+    end
+
+    %% Relaciones de Usuarios
+    Adulto -->|"Lanza y calibra"| C_Calibracion
+    Nino -->|"Toca cards y habla"| C_Juegos
+
+    %% Relaciones de Hardware
+    Kinect -.->|"Transmite Depth/Color"| C_Calibracion
+    Kinect -.->|"Transmite Depth/Color"| C_Vision
+    C_Juegos -->|"Renderiza buffer"| Proyector
+    C_Juegos -->|"Reproduce pistas"| Altavoces
+
+    %% Relaciones Internas
+    C_Calibracion -->|"Guarda homografía y dmax_map"| C_Datos
+    C_Vision -->|"Lee parámetros de calibración"| C_Datos
+    C_Vision -->|"Envía coordenadas (X,Y) de toques"| C_Juegos
+
+    %% Relaciones con Externos de Software
+    C_Juegos -->|"Consulta inferencia semántica"| Modelo_AI

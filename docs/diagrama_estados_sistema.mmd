@@ -1,0 +1,60 @@
+stateDiagram-v2
+    [*] --> Calibracion : Inicio del Sistema
+
+    state Calibracion {
+        [*] --> ProyectandoMarcadores : Videobeam emite cuadrados de referencia
+        ProyectandoMarcadores --> VistaRGB : Kinect (Cámara RGB) busca marcadores
+        VistaRGB --> CalculandoHomografia : Corrige perspectiva y mapea coordenadas
+        CalculandoHomografia --> GenerandoMapaBase : Kinect (Cámara Profundidad) mide mesa vacía
+        GenerandoMapaBase --> [*] : Configuraciones guardadas (.json / .txt)
+    }
+    
+    Calibracion --> MenuPrincipal : Entorno calibrado exitosamente
+    
+    state MenuPrincipal {
+        [*] --> ReplicandoIntefaz : Videobeam proyecta Cards de juegos
+        ReplicandoIntefaz --> MonitoreoTouch : Kinect Loop (Profundidad activa)
+        MonitoreoTouch --> AnimandoSeleccion : Toque detectado (Baja profundidad en ROI)
+        AnimandoSeleccion --> [*] : Redirigir al módulo de juego
+    }
+    
+    MenuPrincipal --> JuegoActivo : Niño selecciona un juego
+    
+    state JuegoActivo {
+        [*] --> MostrandoEscenario : Proyecta rectángulos/zonas de juego
+        
+        state InteraccionFisica {
+            [*] --> EsperandoPiezas : Kinect monitorea la mesa
+            EsperandoPiezas --> ClasificacionFisica : Niño coloca tarjetas/objetos reales
+            ClasificacionFisica --> ActualizarInterfaz : Detectar posición y proyectar marcas
+        }
+        
+        MostrandoEscenario --> InteraccionFisica 
+        InteraccionFisica --> EscuchaVoz : Evento trigger (Ej. Botón proyectado 'Verificar')
+        
+        state EscuchaVoz {
+            [*] --> GrabandoAudio : Micrófono captura audio ambiental y voz
+            GrabandoAudio --> FinDeGrabacion : Se detecta silencio o tiempo límite
+            FinDeGrabacion --> [*] : Audio almacenado en búfer
+        }
+        
+        EscuchaVoz --> ProcesamientoIA : Audio listo
+        
+        state ProcesamientoIA {
+            [*] --> TranscribiendoVoz : Servicio SpeechToText (Voz a Texto)
+            TranscribiendoVoz --> ValidacionDidactica : Envía texto a Ollama (Deepseek/Llama)
+            ValidacionDidactica --> [*] : Obtiene Feedback (JSON Correcto / Faltantes)
+        }
+        
+        ProcesamientoIA --> Retroalimentacion : Fin de análisis AI
+        
+        state Retroalimentacion {
+            [*] --> DibujandoFeedback : Videobeam proyecta overlays de éxito o tips
+            DibujandoFeedback --> [*] : Espera confirmación del niño
+        }
+        
+        Retroalimentacion --> MostrandoEscenario : Reintentar / Siguiente Ronda
+    }
+    
+    JuegoActivo --> MenuPrincipal : Niño presiona 'Cerrar (X)' u 'Atrás'
+    MenuPrincipal --> [*] : Apagado del sistema

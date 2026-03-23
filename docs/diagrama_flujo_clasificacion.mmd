@@ -1,0 +1,40 @@
+flowchart TD
+    %% Definición de estilos
+    classDef menu fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef nivel fill:#e1f5fe,stroke:#03a9f4,stroke-width:2px;
+    classDef escenario fill:#fff3e0,stroke:#ff9800,stroke-width:2px;
+    classDef juego fill:#e8f5e9,stroke:#4caf50,stroke-width:2px;
+    classDef accion fill:#f3e5f5,stroke:#9c27b0,stroke-width:1px,stroke-dasharray: 5 5;
+
+    subgraph "MENÚ PRINCIPAL (menu.py)"
+        M1[Pantalla Principal]:::menu
+        M1 -->|Toque en card Clasificación| M2(Delegar a lógica de juego):::accion
+    end
+
+    subgraph "SELECCIÓN DE NIVEL (levels.py)"
+        N1[mostrar_seleccion_niveles_clasificacion]:::nivel
+        M2 --> N1
+        N1 --> N2{¿Qué nivel elige?}:::nivel
+        N2 -->|1 escenario| N3[Guarda: 1]:::accion
+        N2 -->|2 escenarios| N4[Guarda: 2]:::accion
+        N1 -->|"Botón Cerrar (X)"| M1
+    end
+
+    subgraph "SELECCIÓN DE ESCENARIOS (levels.py)"
+        E1[mostrar_vista_5_escenarios]:::escenario
+        N3 -.-> E1
+        N4 -.-> E1
+        E1 --> E2[Muestra 5 opciones: Granja, Calle, etc.]:::escenario
+        E2 --> E3{¿Seleccionó N escenarios?}:::escenario
+        E1 -->|Botón Atrás| N1
+        E1 -->|"Botón Cerrar (X)"| M1
+    end
+
+    subgraph "JUEGO / PROYECCIÓN FÍSICA (levels.py)"
+        J1[mostrar_vista_rectangulos_escenarios]:::juego
+        E3 -->|Sí, completó selección| J1
+        J1 --> J2[Proyecta los rectángulos en la mesa]:::juego
+        J2 --> J3[El niño clasifica objetos físicos en los recuadros]:::juego
+        J1 -->|Botón Reconocer/Atrás| N1
+        J1 -->|"Botón Cerrar (X)"| M1
+    end

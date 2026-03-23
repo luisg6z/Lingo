@@ -1,0 +1,33 @@
+flowchart TD
+    %% Estilos C4 Model
+    classDef person fill:#08427b,color:#ffffff,stroke:#052e56,stroke-width:2px,rx:15px,ry:15px;
+    classDef system fill:#1168bd,color:#ffffff,stroke:#0b4884,stroke-width:2px;
+    classDef external fill:#808080,color:#ffffff,stroke:#555555,stroke-width:2px;
+
+    %% Nodos de Personajes / Usuarios
+    Adulto["👤 Adulto / Supervisor\n[Persona]\n\nEnciende el equipo, calibra el software y monitorea la sesión de juego." ]:::person
+    Nino["👤 Niño / Jugador\n[Persona]\n\nInteractúa físicamente con la mesa tocando objetos y emitiendo comandos de voz." ]:::person
+
+    %% Nodo del Sistema Principal
+    Magicboard["MagicboARd\n[Sistema de Software]\n\nProcesa visión por computadora del sensor para calcular toques y renderizar minijuegos aumentados." ]:::system
+
+    %% Nodos de Sistemas y Hardware Externos
+    Kinect["📷 Sensor Kinect\n[Dispositivo]\n\nTransmite streams de video y malla de profundidad para detectar cercanía de manos." ]:::external
+    Proyector["📽️ Videoproyector\n[Dispositivo]\n\nProyecta la interfaz gráfica y tarjetas dinámicas sobre la superficie física." ]:::external
+    Altavoces["🔊 Altavoces / Sistema de Audio\n[Dispositivo]\n\nReproduce música ambiental y sonidos retroalimentativos de acierto/error." ]:::external
+    Modelo_AI["🤖 Sentence-Transformers\n[Librería de IA]\n\nModulo encargado de procesar y puntuar la similitud semántica de las frases." ]:::external
+
+    %% Relaciones
+    Adulto -->|"Lanza script principal, calibra área"| Magicboard
+    Nino -->|"Realiza toques en la mesa y habla"| Magicboard
+    
+    Kinect -.->|"Envía datos de Profundidad y Color"| Magicboard
+    Magicboard -->|"Envía buffer de video fullscreen"| Proyector
+    Magicboard -->|"Envía señales y pistas de audio"| Altavoces
+    Magicboard -->|"Consulta inferencia semántica"| Modelo_AI
+
+    %% Ajuste de Contenedor de Frontera
+    subgraph S1 ["Frontera del Sistema"]
+        style S1 fill:#ffffff,stroke:#1168bd,stroke-width:2px,stroke-dasharray: 5 5;
+        Magicboard
+    end

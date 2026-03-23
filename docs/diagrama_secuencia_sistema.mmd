@@ -1,0 +1,59 @@
+sequenceDiagram
+    autonumber
+    
+    actor Usuario as 👤 Usuario<br/>(Adulto/Niño)
+    participant VP as 👁️ Visión<br/>(Kinect)
+    participant CL as 🛠️ Calibración
+    participant DB as 📁 Almacenamiento<br/>(Local)
+    participant GE as 🎮 Motor de Juegos
+    participant VB as 📽️ Videoproyector
+    participant AI as 🤖 Modelo de IA
+
+    %% Fase de Calibración
+    rect rgb(230, 240, 255)
+        note right of Usuario: FASE 1: Calibración
+        Usuario ->> CL: Ejecuta el script de calibración
+        CL ->> VB: Proyecta cuadrados de referencia en la mesa
+        VP ->> CL: Transmite Frame RGB + Depth
+        CL ->> CL: Mapea ROI y calcula Matriz Homografía
+        VP ->> CL: Transmite 500 frames estáticos (Profundidad)
+        CL ->> CL: Calcula el baseline estadístico (dmax_map)
+        CL ->> DB: Guarda dmax_map y coord./matriz JSON
+        CL -->> Usuario: Confirma calibración exitosa
+    end
+
+    %% Fase de Inicialización
+    rect rgb(240, 250, 240)
+        note right of Usuario: FASE 2: Inicialización (Startup)
+        Usuario ->> GE: Inicia main.py
+        GE ->> DB: Lee dmax_map y Matriz Homografía
+        GE ->> AI: Carga el modelo Sentence-Transformers
+        AI -->> GE: Retorna modelo instanciado
+        GE ->> VP: Inicia el stream continuo del sensor Kinect
+        GE ->> VB: Renderiza la interfaz inicial (Menú)
+    end
+
+    %% Fase Intearactiva
+    rect rgb(255, 245, 235)
+        note right of Usuario: FASE 3: Bucle de Detección (Game Loop)
+        loop ~30 FPS
+            Usuario ->> VB: Físicamente acerca/toca la superficie
+            VP ->> VP: Captura Frame de Profundidad (ROI)
+            VP ->> VP: Filtra vibraciones vs Frame Anterior
+            VP ->> VP: Máscara de Toques (evalúa vs dmax_map)
+            VP ->> VP: Aplica filtros morfológicos (ruido)
+            VP ->> VP: Calcula el Centroide Ponderado (X_cam, Y_cam)
+            VP ->> VP: Aplica Matriz de Homografía -> (X_proy, Y_proy)
+            VP ->> GE: Envía coordenadas del toque
+            
+            alt Detecta colisión (El toque coincide con una Card)
+                GE ->> GE: Registra el evento de clic
+                GE ->> AI: (Según juego) Consulta embeddings / similitud
+                AI -->> GE: Retorna inferencia de acierto
+                GE ->> Usuario: Emite Feedback de Audio (Altavoces)
+                GE ->> GE: Actualiza estado del juego (ej. Animar elevación)
+            end
+            
+            GE ->> VB: Dibuja y envía nuevo buffer de video
+        end
+    end
