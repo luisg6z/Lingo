@@ -204,6 +204,25 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     rgb_stream.start()
     depth_stream.start()
 
+    # Iniciar TTS para dar la instrucción
+    import threading
+    def decir_instruccion_clasificacion():
+        try:
+            import pyttsx3
+            engine_tts = pyttsx3.init()
+            engine_tts.setProperty('rate', 150)
+            voices = engine_tts.getProperty('voices')
+            for voice in voices:
+                if 'spanish' in voice.name.lower() or 'español' in voice.name.lower():
+                    engine_tts.setProperty('voice', voice.id)
+                    break
+            engine_tts.say("ahora coloca 5 figuras para cada escenario")
+            engine_tts.runAndWait()
+        except:
+            pass
+
+    threading.Thread(target=decir_instruccion_clasificacion, daemon=True).start()
+
     while True:
         frame = rgb_stream.read_frame()
         depth_frame = depth_stream.read_frame()
