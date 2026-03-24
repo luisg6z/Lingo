@@ -388,6 +388,52 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
     history_cleanup_interval = 30
     max_history_age = 1.0
     
+    # Draw initial screen
+    temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    for y in range(view_height):
+        ratio = y / view_height
+        r = int(255 * (0.3 + 0.4 * ratio))
+        g = int(200 * (0.5 + 0.3 * ratio))
+        b = int(255 * (0.8 - 0.3 * ratio))
+        temp_screen[y, :] = [b, g, r]
+    draw_logo_func(temp_screen)
+    draw_final_cards(temp_screen, card_positions_final)
+    hablar_button_bounds_final = draw_circular_button(
+        temp_screen,
+        circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar,
+        "Hablar",
+        bg_color=(0, 200, 0),  # Green
+        border_color=(255, 255, 255),
+        border_thickness=3,
+        text_color=(255, 255, 255),
+        font_scale=1.3,
+        bold=True,
+        shadow=True
+    )
+    draw_close_card_final(temp_screen, elevated=False)
+    final_screen_scaled_init = scale_to_videobeam(temp_screen)
+    cv2.imshow(window_name, final_screen_scaled_init)
+    cv2.waitKey(50)
+
+    # Iniciar TTS para dar la instrucción de voz
+    import threading
+    def decir_instruccion():
+        try:
+            import pyttsx3
+            engine_tts = pyttsx3.init()
+            engine_tts.setProperty('rate', 150)
+            voices = engine_tts.getProperty('voices')
+            for voice in voices:
+                if 'spanish' in voice.name.lower() or 'español' in voice.name.lower():
+                    engine_tts.setProperty('voice', voice.id)
+                    break
+            engine_tts.say("Con los personajes, acción y lugar seleccionados, piensa en una historia, cuando estés listo, presiona el botón para hablar")
+            engine_tts.runAndWait()
+        except Exception as e:
+            print(f"Error al decir instrucción: {e}")
+
+    threading.Thread(target=decir_instruccion, daemon=True).start()
+
     # Bucle principal de detección de toques (solo para la X)
     while True:
         frame_count += 1
