@@ -62,6 +62,28 @@ CATEGORY_MAP = {
     "ruler": "Escenario 5"
 }
 
+
+def preprocess_frame_for_detection(bgr_image):
+    """
+    Atenúa luces altas y reflejos en figuras brillantes y reparte mejor el contraste
+    antes de pasar el frame a YOLO (sin cambiar la resolución ni el layout BGR).
+    """
+    if bgr_image is None or bgr_image.size == 0:
+        return bgr_image
+
+    x = bgr_image.astype(np.float32) / 255.0
+    # Compresión tipo Reinhard suave: reduce píxeles quemados sin aplastar sombras
+    x = x / (1.0 + 0.35 * x)
+    bgr = (np.clip(x, 0.0, 1.0) * 255.0).astype(np.uint8)
+
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_ch = clahe.apply(l_ch)
+    lab = cv2.merge([l_ch, a_ch, b_ch])
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
 class ObjectDetector:
     def __init__(self, model_path=MODEL_PATH):
         print(f"Loading YOLO model from {model_path}...")
@@ -76,7 +98,9 @@ class ObjectDetector:
     def detect(self, frame, conf=0.3):
         if self.model is None:
             return []
-        
+
+        frame = preprocess_frame_for_detection(frame)
+
         results = self.model(frame, conf=conf, verbose=False)
         detections = []
         

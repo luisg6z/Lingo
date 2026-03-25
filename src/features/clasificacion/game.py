@@ -15,7 +15,7 @@ from openni import openni2
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 import sys
 sys.path.insert(0, project_root)
-from src.core.calibration import load_and_validate_dmax_map
+from src.core.calibration import load_touch_depth_maps
 from src.core.detection import detect_color_and_shape
 from src.core.font_utils import put_text_ubuntu
 
@@ -34,14 +34,9 @@ def juego_clasificacion(device, modo_clasificacion, piezas_fisicas, num_piezas):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar y validar dmax_map
-    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    dmax_map, dmin_map = load_touch_depth_maps(coordenadas, band_profile="clasificacion")
     if dmax_map is None:
         return
-
-    # Ajustar el dmax_map (restar offset)
-    dmax_map = dmax_map - 7
-    dmin_map = dmax_map - 50
 
     # Tamaño de la pantalla del videobeam (viewport)
     view_width = 1280

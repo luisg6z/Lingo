@@ -2286,6 +2286,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     # Clave: (label, escenario) - Valor: True si ya se anunció que este objeto no pertenece a este escenario
     objetos_incorrectos_anunciados = set()  # Set de tuplas (label, escenario) que ya recibieron anuncio TTS de incorrecto
     
+    # Cinco piezas correctas de forma continua antes del TTS "Está correcto..." (evita anunciar en un frame suelto)
+    escenario_cinco_estable_desde = {}  # {escenario: timestamp inicio}
+    UMBRAL_5_PIEZAS_ESTABLES_SEG = 3.0
+    
     # Sistema de seguimiento de objetos temporalmente perdidos (ocultos por mano u otro objeto)
     # Clave: label - Valor: (timestamp_desaparicion, escenario_anterior, cx_prev, cy_prev)
     # Este sistema permite tolerar pérdidas temporales de detección (ej: cuando una mano pasa frente a la figura)
@@ -2839,6 +2843,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Esto evita que se repita el anuncio cuando una pieza se mueve temporalmente
                                 if len(piezas_correctas_por_escenario[escenario]) < 5:
                                     escenarios_anunciados_completos.discard(escenario)
+                                    escenario_cinco_estable_desde.pop(escenario, None)
                         
                         # Remover del conjunto de objetos anunciados si estaba en posición correcta antes
                         if stable_label in objetos_anunciados:
@@ -2874,6 +2879,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                     # Esto evita que se repita el anuncio cuando una pieza se mueve temporalmente
                                     if len(piezas_correctas_por_escenario[escenario]) < 5:
                                         escenarios_anunciados_completos.discard(escenario)
+                                        escenario_cinco_estable_desde.pop(escenario, None)
                             
                             # Verificar si es la primera vez que este objeto está en la posición correcta
                             # Solo anunciar si no estaba en posición correcta antes o es un objeto nuevo
@@ -2897,47 +2903,6 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Solo agregar si no estaba ya en este escenario
                                 if stable_label not in piezas_correctas_por_escenario[escenario_actual]:
                                     piezas_correctas_por_escenario[escenario_actual].add(stable_label)
-                                    
-                                    # Verificar si el escenario alcanzó exactamente 5 piezas correctas
-                                    piezas_ahora = len(piezas_correctas_por_escenario[escenario_actual])
-                                    
-                                    # Si alcanzó 5 piezas y no se ha anunciado antes para este escenario
-                                    if piezas_ahora == 5 and escenario_actual not in escenarios_anunciados_completos:
-                                        # Obtener todas las piezas del escenario
-                                        piezas_escenario = piezas_correctas_por_escenario[escenario_actual]
-                                        
-                                        # Obtener traducciones
-                                        escenario_es = translations.get("escenarios", {}).get(escenario_actual, escenario_actual)
-                                        
-                                        # Obtener el artículo del escenario
-                                        articulo_escenario = obtener_articulo_escenario(escenario_es)
-                                        
-                                        # Construir lista de nombres de piezas en español con artículos
-                                        nombres_piezas = []
-                                        for pieza_label in piezas_escenario:
-                                            pieza_es = translations.get("labels", {}).get(pieza_label, pieza_label)
-                                            articulo = obtener_articulo(pieza_label)
-                                            # Agregar artículo + nombre: "el gato", "la manzana", etc.
-                                            nombres_piezas.append(f"{articulo} {pieza_es}")
-                                        
-                                        # Construir mensaje TTS: "Está correcto. [artículo pieza1], [artículo pieza2], [artículo pieza3], [artículo pieza4] y [artículo pieza5] pertenecen a [artículo] [escenario]"
-                                        mensaje = "Está correcto. "
-                                        if len(nombres_piezas) > 0:
-                                            # Unir todas las piezas con comas, excepto la última que lleva "y"
-                                            if len(nombres_piezas) == 1:
-                                                mensaje += nombres_piezas[0]
-                                            elif len(nombres_piezas) == 2:
-                                                mensaje += f"{nombres_piezas[0]} y {nombres_piezas[1]}"
-                                            else:
-                                                # Para 3 o más: "el gato, la vaca, el perro, la gallina y el caballo"
-                                                mensaje += ", ".join(nombres_piezas[:-1])
-                                                mensaje += f" y {nombres_piezas[-1]}"
-                                        
-                                        mensaje += f" pertenecen a {articulo_escenario} {escenario_es}"
-                                        
-                                        reproducir_texto_tts(mensaje)
-                                        escenarios_anunciados_completos.add(escenario_actual)
-                                        print(f"TTS anunciado (escenario completo): {mensaje}")
                             
                             # Marcar el objeto como anunciado (aunque no anunciemos individualmente)
                             if debe_anunciar:
@@ -2993,9 +2958,8 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Remover de las piezas correctas si estaba registrada
                                 if escenario_prev in piezas_correctas_por_escenario:
                                     piezas_correctas_por_escenario[escenario_prev].discard(label)
-                                    # Solo remover de escenarios_anunciados_completos si el escenario realmente tiene menos de 5 piezas
-                                    if len(piezas_correctas_por_escenario[escenario_prev]) < 5:
-                                        escenarios_anunciados_completos.discard(escenario_prev)
+                                    # No quitar escenarios_anunciados_completos aquí: la pérdida es por oclusión
+                                    # temporal; el TTS del escenario completo no debe repetirse al reaparecer la figura.
                                 
                                 # Limpiar temporizador de incorrecto y anuncios
                                 if label in objeto_incorrecto_tiempo:
@@ -3043,8 +3007,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         # Remover de las piezas correctas si estaba registrada
                         if escenario_perdido in piezas_correctas_por_escenario:
                             piezas_correctas_por_escenario[escenario_perdido].discard(label)
-                            if len(piezas_correctas_por_escenario[escenario_perdido]) < 5:
-                                escenarios_anunciados_completos.discard(escenario_perdido)
+                            # Igual que arriba: no invalidar el anuncio por oclusión prolongada
                         
                         # Limpiar temporizador de incorrecto y anuncios
                         if label in objeto_incorrecto_tiempo:
@@ -3069,6 +3032,48 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         del objetos_temporalmente_perdidos[label]
                         if label in objeto_posicion_anterior:
                             del objeto_posicion_anterior[label]
+            
+            # TTS del escenario completo: exige 5 piezas correctas de forma continua (espera UMBRAL_5_PIEZAS_ESTABLES_SEG)
+            if not juego_completo:
+                ahora_esc = time.time()
+                for escenario_chk in escenarios_seleccionados:
+                    if escenario_chk in escenarios_anunciados_completos:
+                        continue
+                    n_ok = len(piezas_correctas_por_escenario.get(escenario_chk, set()))
+                    if n_ok == 5:
+                        if escenario_chk not in escenario_cinco_estable_desde:
+                            escenario_cinco_estable_desde[escenario_chk] = ahora_esc
+                        elif ahora_esc - escenario_cinco_estable_desde[escenario_chk] >= UMBRAL_5_PIEZAS_ESTABLES_SEG:
+                            piezas_escenario = piezas_correctas_por_escenario[escenario_chk]
+                            escenario_es = translations.get("escenarios", {}).get(escenario_chk, escenario_chk)
+                            articulo_escenario = obtener_articulo_escenario(escenario_es)
+                            piezas_ordenadas = sorted(
+                                piezas_escenario,
+                                key=lambda pl: translations.get("labels", {}).get(pl, pl).lower(),
+                            )
+                            nombres_piezas = []
+                            for pieza_label in piezas_ordenadas:
+                                pieza_es = translations.get("labels", {}).get(pieza_label, pieza_label)
+                                articulo = obtener_articulo(pieza_label)
+                                nombres_piezas.append(f"{articulo} {pieza_es}")
+                            mensaje = "Está correcto. "
+                            if len(nombres_piezas) > 0:
+                                if len(nombres_piezas) == 1:
+                                    mensaje += nombres_piezas[0]
+                                elif len(nombres_piezas) == 2:
+                                    mensaje += f"{nombres_piezas[0]} y {nombres_piezas[1]}"
+                                else:
+                                    mensaje += ", ".join(nombres_piezas[:-1])
+                                    mensaje += f" y {nombres_piezas[-1]}"
+                            mensaje += f" pertenecen a {articulo_escenario} {escenario_es}"
+                            reproducir_texto_tts(mensaje)
+                            escenarios_anunciados_completos.add(escenario_chk)
+                            escenario_cinco_estable_desde.pop(escenario_chk, None)
+                            print(
+                                f"TTS anunciado (escenario completo, tras {UMBRAL_5_PIEZAS_ESTABLES_SEG}s con 5 piezas): {mensaje}"
+                            )
+                    else:
+                        escenario_cinco_estable_desde.pop(escenario_chk, None)
             
             # Verificar si todos los escenarios tienen 5 piezas correctas y están completos (solo si el juego no está completo)
             if not juego_completo:

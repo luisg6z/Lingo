@@ -21,6 +21,12 @@ import sys
 import io
 from datetime import datetime
 
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from src.core.calibration import capture_dmax_map, get_coordenadas_path, get_dmax_map_path
+
 # Configurar salida UTF-8 para Windows
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -189,50 +195,30 @@ def calcular_mapa_profundidad(device, calibrated_area, xv_min, yv_min, xv_max, y
     Calcula el mapa de profundidad (dmax_map) para el área calibrada.
     Este mapa representa la profundidad de la superficie de la mesa.
     """
-    depth_stream = device.create_depth_stream()
-    depth_stream.start()
-    
     x, y, w, h = calibrated_area
     print(f"\nCalibrando profundidad en área: {w}x{h} píxeles")
-    
-    # Acumulador de profundidad
-    depth_accum = np.zeros((h, w, MAX_DEPTH - MIN_DEPTH + 1), dtype=int)
-    
-    # Mostrar mensaje en proyección
+
     proyeccion = np.zeros((PROJECTION_HEIGHT, PROJECTION_WIDTH, 3), dtype=np.uint8)
     mostrar_mensaje(proyeccion, "Calibrando profundidad...", (0, 255, 255))
     cv2.imshow("Proyeccion", proyeccion)
     cv2.waitKey(1)
-    
-    # Acumular profundidad durante varios frames
+
     print("Capturando frames de profundidad...")
-    for _ in tqdm(range(DEPTH_CALIBRATION_FRAMES), desc="Frames", unit="frames"):
-        frame = depth_stream.read_frame()
-        depth_data = np.frombuffer(frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
-        depth_data = cv2.flip(depth_data, 1)
-        depth_roi = depth_data[y:y+h, x:x+w]
-        
-        # Contar frecuencias de profundidad
-        valid_mask = (depth_roi >= MIN_DEPTH) & (depth_roi <= MAX_DEPTH)
-        valid_depth = depth_roi[valid_mask] - MIN_DEPTH
-        indices = np.where(valid_mask)
-        depth_accum[indices[0], indices[1], valid_depth] += 1
-    
-    depth_stream.stop()
-    
-    # Generar mapa dmax (moda de la profundidad)
-    dmax_map = np.argmax(depth_accum, axis=2) + MIN_DEPTH
-    
-    # Guardar mapa
-    os.makedirs("config", exist_ok=True)
-    np.savetxt("config/dmax_map.txt", dmax_map.flatten(), fmt="%d")
-    
-    # Mostrar mensaje de finalización
+    dmax_map = capture_dmax_map(
+        device,
+        calibrated_area,
+        num_frames=DEPTH_CALIBRATION_FRAMES,
+        min_depth=MIN_DEPTH,
+        max_depth=MAX_DEPTH,
+        save_path=get_dmax_map_path(),
+        progress=tqdm(range(DEPTH_CALIBRATION_FRAMES), desc="Frames", unit="frames"),
+    )
+
     proyeccion = np.zeros((PROJECTION_HEIGHT, PROJECTION_WIDTH, 3), dtype=np.uint8)
     mostrar_mensaje(proyeccion, "Calibracion Completada!", (0, 255, 0))
     cv2.imshow("Proyeccion", proyeccion)
     cv2.waitKey(2000)
-    
+
     return dmax_map
 
 # ============================================================================
@@ -418,7 +404,12 @@ def calibrar_mesa(device):
     print("PASO 2: Calibración de profundidad")
     print("=" * 60)
     print("Mantén la mesa libre de objetos durante la calibración...")
-    
+
+    try:
+        depth_stream.stop()
+    except Exception:
+        pass
+
     calibrated_area = (xw_min, yw_min_escalado, xw_max_escalado - xw_min, yw_max - yw_min_escalado)
     dmax_map = calcular_mapa_profundidad(device, calibrated_area, xv_min, yv_min, xv_max, yv_max)
     
@@ -442,9 +433,9 @@ def calibrar_mesa(device):
         "calibration_date": datetime.now().isoformat()
     }
     
-    os.makedirs("config", exist_ok=True)
-    config_path = "config/ultima_configuracion_coordenadas.json"
-    with open(config_path, "w") as f:
+    config_path = get_coordenadas_path()
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)
     print(f"✓ Configuración guardada en: {config_path}")
 

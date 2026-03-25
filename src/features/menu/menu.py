@@ -15,7 +15,7 @@ import sys
 # Get project root (3 levels up from this file: src/features/menu -> src -> project root)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, project_root)
-from src.core.calibration import load_and_validate_dmax_map
+from src.core.calibration import load_touch_depth_maps
 from src.core.ui_utils import scale_to_videobeam, draw_logo
 from src.components import draw_rectangular_button
 
@@ -80,15 +80,10 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar y validar dmax_map (opcional - solo necesario para detección de toques)
-    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    # Cargar dmax/dmin para detección de toques (banda según perfil menú + JSON opcional)
+    dmax_map, dmin_map = load_touch_depth_maps(coordenadas, band_profile="menu")
     dmax_map_available = dmax_map is not None
-    
-    if dmax_map_available:
-        # Ajustar el dmax_map (restar offset)
-        dmax_map = dmax_map - 5
-        dmin_map = dmax_map - 7
-    else:
+    if not dmax_map_available:
         print("\n[ADVERTENCIA] No se pudo cargar dmax_map. El menú se mostrará pero la detección de toques no funcionará.")
         print("Ejecuta 'python src/core/calibrate_area.py' o 'python calibrate_area_mejorado.py' para calibrar.\n")
         dmax_map = None
