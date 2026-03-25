@@ -188,7 +188,7 @@ def _get_ollama_client():
         return None
 
 
-def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="deepseek-v3"):
+def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="gemini-3-flash-preview"):
     """
     Pide a Ollama que valide la historia usando los personajes, acciones y lugares dados.
     Público objetivo: niños de ~7 años. La respuesta debe ser SOLO JSON.
@@ -235,55 +235,34 @@ def verify_story_ollama(sentence, subjects=None, actions=None, places=None, mode
     sentence_clean = (sentence or "").strip().replace("\r", " ").replace("\n", " ")
     sentence_clean = sentence_clean.replace('"', "'")[:2000]  # límite razonable de longitud
 
-    prompt = f"""Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
-
-
+    prompt = f"""
+Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
 
 CRITERIOS DE EVALUACIÓN:
 
 1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
-
 2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
-
 3. PARTÍCULAS DE ENLACE: Debe usar al menos uno (y, entonces, luego, porque, pero, etc.).
-
-4. ELEMENTOS: Debe incluir (o variaciones claras de):
-
+4. ELEMENTOS: DEBE incluir (ya sean variaciones, conjugaciones, etc.) OBLIGATORIAMENTE:
    - Personajes (sujetos): {subjects_str}
-
    - Acciones: {actions_str}
-
    - Lugares: {places_str}
-
 5. CIERRE/CONCLUSIÓN:La historia no puede quedar a medias; debe tener un final.
-
 6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
-
-
 
 INSTRUCCIONES PARA LOS "TIPS":
 
-Sé breve y muy amable.
-
-Si hay un error, usa el formato: "Dijiste '[error]', pero quedaría mejor así: '[corrección]'".
-
-Si la historia es perfecta, usa el primer tip para felicitar un punto específico (ej: "¡Me encantó cómo usaste el conector 'porque'!") y deja el resto del array vacío.
-
-
+- Sé breve y muy amable.
+- Si hay un error, usa el formato: "Dijiste '[error]', pero quedaría mejor así: '[corrección]'".
+- Si FALTA un elemento ya sea sujeto, acción o lugar, has un tip para indicarle que falta.
+- Si la historia es perfecta, usa el primer tip para felicitar un punto específico (ej: "¡Me encantó cómo usaste el conector 'porque'!") y deja el resto del array vacío.
 
 ANÁLISIS PARA "parts":
-
 - "subjects": fragmentos EXACTOS del texto del niño que correspondan a los sujetos dados.
-
 - "actions": fragmentos EXACTOS del texto del niño que correspondan a las acciones dadas.
-
 - "places": fragmentos EXACTOS del texto del niño que correspondan a los lugares dados.
 
-
-
 Historia del niño: "{sentence_clean}"
-
-
 
 FORMATO DE RESPUESTA (SOLO JSON EN UNA LÍNEA, sin otro texto):
 

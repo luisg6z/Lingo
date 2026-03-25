@@ -427,7 +427,7 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
                 if 'spanish' in voice.name.lower() or 'español' in voice.name.lower():
                     engine_tts.setProperty('voice', voice.id)
                     break
-            engine_tts.say("Con los personajes, acción y lugar seleccionados, piensa en una historia, cuando estés listo, presiona el botón para hablar")
+            engine_tts.say("Vamos a jugar a crear historias. Con este personaje, acción y lugar. Tu reto es unirlos todos en una sola oración y, muy importante, ¡no olvides explicar por qué está sucediendo! Cuando estés listo, presiona el botón para hablar")
             engine_tts.runAndWait()
         except Exception as e:
             print(f"Error al decir instrucción: {e}")

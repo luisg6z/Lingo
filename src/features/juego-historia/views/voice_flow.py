@@ -329,7 +329,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                 subjects=sujetos_seleccionados,
                 actions=acciones_seleccionadas,
                 places=lugares_seleccionados,
-                model="deepseek-v3.2:cloud",
+                model="gemini-3-flash-preview:cloud",
             )
         done_holder[0] = True
     thr = threading.Thread(target=_ollama_thread, daemon=True)

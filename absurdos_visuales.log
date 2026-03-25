@@ -237,3 +237,14 @@
 2026-03-20 18:15:32,885 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
 2026-03-20 18:16:40,896 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
 2026-03-20 18:18:46,229 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-23 19:07:07,321 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: zanahoria-lapiz.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-23 20:14:01,164 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-03-23 20:14:01,164 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-03-24 12:02:39,897 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 12:06:19,941 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 14:40:05,981 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 14:43:02,388 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 18:33:21,241 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 18:36:27,814 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 18:39:16,833 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-03-24 19:10:11,084 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: sol-negro.png, Intentos restantes: 0, Respuesta correcta: False

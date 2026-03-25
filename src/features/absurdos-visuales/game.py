@@ -1255,13 +1255,13 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 print("=" * 50)
                 print("INICIANDO CAPTURA DE AUDIO")
                 print("=" * 50)
-                print("Esperando audio (timeout: 10 segundos, límite de frase: 10 segundos)...")
+                print("Esperando audio (timeout: 7 segundos, límite de frase: 7 segundos)...")
                 print("Habla ahora...")
                 
                 try:
                     with microphone as source:
                         # Escuchar hasta que detecte que terminó de hablar
-                        audio = recognizer.listen(source, timeout=10, phrase_time_limit=10)
+                        audio = recognizer.listen(source, timeout=7, phrase_time_limit=7)
                         if audio:
                             duracion = len(audio.frame_data) / audio.sample_rate
                             print(f"✓ Audio capturado exitosamente!")
