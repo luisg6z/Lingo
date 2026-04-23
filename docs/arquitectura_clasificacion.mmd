@@ -1,0 +1,55 @@
+graph TD
+    %% Estilos
+    classDef interface fill:#d4edda,stroke:#28a745,stroke-width:2px;
+    classDef application fill:#cce5ff,stroke:#007bff,stroke-width:2px;
+    classDef infrastructure fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
+    
+    subgraph Interfaz ["Capa de Interfaz (Presentación)"]
+        UI_Visual["Visualización en Videobeam"]:::interface
+        UI_Interaccion["Feedback Visual de Toques y Cards"]:::interface
+        UI_Voz["Instrucciones por Voz (TTS)"]:::interface
+    end
+
+    subgraph Aplicacion ["Capa de Aplicación (Lógica)"]
+        Gestor_Niveles["Selección de Niveles"]:::application
+        Gestor_Escenarios["Selección de Escenarios"]:::application
+        Procesador_Eventos["Procesador de Eventos (Toques)"]:::application
+        Logica_Validacion["Lógica de Clasificación / Juego"]:::application
+    end
+
+    subgraph Infraestructura ["Capa de Infraestructura"]
+        OpenCV["Motor de Renderizado (OpenCV)"]:::infrastructure
+        OpenNI["Lector de Video/Profundidad (OpenNI2)"]:::infrastructure
+        Pytts["Motor Text-to-Speech (Pyttsx3)"]:::infrastructure
+        Mapeo["Mapeo de Coordenadas de Sensor"]:::infrastructure
+        Modelo_Deteccion["Modelo de Detección de Objetos (IA)"]:::infrastructure
+    end
+
+    %% Relaciones de Interfaz a Aplicación
+    UI_Visual --- Gestor_Niveles
+    UI_Visual --- Gestor_Escenarios
+    UI_Visual --- Logica_Validacion
+    
+    %% Relaciones de Aplicación a Infraestructura
+    Gestor_Niveles --> Pytts
+    Gestor_Escenarios --> Pytts
+    Logica_Validacion --> Pytts
+    
+    Gestor_Niveles --> OpenCV
+    Gestor_Escenarios --> OpenCV
+    Logica_Validacion --> OpenCV
+    
+    Procesador_Eventos --> Gestor_Niveles
+    Procesador_Eventos --> Gestor_Escenarios
+    Procesador_Eventos --> Logica_Validacion
+
+    %% Modelo de Deteccion se usa en la validación
+    Logica_Validacion --> Modelo_Deteccion
+    OpenNI --> Modelo_Deteccion
+    
+    %% Relaciones de Infraestructura a Aplicación
+    OpenNI --> Mapeo
+    Mapeo --> Procesador_Eventos
+    Pytts --> UI_Voz
+    OpenCV --> UI_Visual
+    OpenCV --> UI_Interaccion

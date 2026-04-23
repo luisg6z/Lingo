@@ -49,12 +49,12 @@ Para que la proyección y el reconocimiento táctil coincidan de manera precisa,
 3. Conecta el sensor Kinect y verifica su funcionamiento con **Kinect Studio** (la cámara RGB y de profundidad deben responder al entorno).
 
 ### 3. Instalación de Software Relacionado
-Asegúrate de tener **Python** instalado. Clona el repositorio e instala las dependencias:
+Asegúrate de tener **uv** y **Python** instalados. Clona el repositorio e instala las dependencias:
 
 ```bash
 git clone https://github.com/luisg6z/Lingo.git
 cd Lingo
-# Instalar bibliotecas y dependencias usando uv
+# Instalar dependencias utilizando uv
 uv sync
 ```
 

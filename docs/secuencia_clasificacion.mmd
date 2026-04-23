@@ -1,0 +1,50 @@
+sequenceDiagram
+    actor Usuario
+    participant Menu as Menú Principal
+    participant SN as mostrar_seleccion_niveles_clasificacion
+    participant S5 as mostrar_vista_5_escenarios
+    participant SR as mostrar_vista_rectangulos_escenarios
+    participant OD as ObjectDetector
+
+    Menu->>SN: Inicia juego de clasificación
+    activate SN
+    SN->>Usuario: Reproduce TTS "Elige cuántos escenarios..."
+    Usuario-->>SN: Toca nivel (ej. "2 escenarios")
+    
+    SN->>S5: Llama con num_escenarios
+    activate S5
+    S5->>Usuario: Reproduce TTS "Elige los escenarios para jugar"
+    
+    loop Selección de Escenarios
+        Usuario-->>S5: Toca card de escenario
+        S5->>S5: Acumula selección
+    end
+    
+    S5->>SR: Llama con escenarios_seleccionados
+    activate SR
+    SR->>OD: Inicializa ObjectDetector
+    SR->>Usuario: Reproduce TTS "Coloca cada figura..."
+    
+    loop Juego en tiempo real
+        OD-->>SR: Detecta objetos usando cámara y YOLO
+        alt Objeto en escenario de su clase (Acertado)
+            SR->>Usuario: Reproduce sonido correcto y TTS (ej. "el gato")
+        else Objeto no pertenece al escenario (En otra caja)
+            SR->>Usuario: Reproduce sonido incorrecto y TTS (ej. "el gato no va aquí")
+        end
+    end
+    
+    SR->>Usuario: Muestra pantalla de éxito y Animación de Confetti
+    
+    alt Volmer a jugar
+        Usuario-->>SR: Toca "Volver a jugar"
+        SR-->>SN: Retorna "RESTART"
+    else Salir
+        Usuario-->>SR: Toca "Salir" o "Cerrar"
+        SR-->>S5: Retorna "MAIN_MENU" / None
+        S5-->>SN: Retorna "MAIN_MENU" / None
+        SN-->>Menu: Cierra la vista y finaliza
+        deactivate SR
+        deactivate S5
+        deactivate SN
+    end

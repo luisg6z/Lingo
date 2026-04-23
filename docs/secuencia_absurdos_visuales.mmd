@@ -1,0 +1,47 @@
+sequenceDiagram
+    actor Usuario
+    participant Menu as Menú Principal
+    participant Game as juego_absurdos_reconocimiento_voz
+    participant Audio as SpeechRecognition (Micrófono)
+    participant NLP as SentenceTransformer
+
+    Menu->>Game: Inicia juego de Absurdos Visuales
+    activate Game
+    Game->>Game: Carga absurdos.json y respuestas_correctas.json
+    
+    loop Bucle Principal de Juego
+        Game->>Game: Selecciona absurdo (imagen) aleatorio
+        Game->>Usuario: Muestra imagen con botón "Hablar" y botón "X"
+        
+        alt Es la primera imagen
+            Game->>Usuario: Reproduce TTS "Ahora habla, di qué está mal"
+        end
+        
+        loop Intentos (Máximo 3)
+            Usuario-->>Game: Toca botón "Hablar"
+            
+            Game->>Audio: Inicia captura de micrófono
+            Audio-->>Game: Devuelve texto reconocido (Google Speech Recognition)
+            
+            Game->>NLP: Compara texto con respuestas correctas
+            NLP-->>Game: Retorna nivel de similitud (Cosine similarity)
+            
+            alt Similitud alta (Respuesta Correcta)
+                Game->>Usuario: Reproduce sonido correcto
+                Game->>Usuario: Muestra pantalla de éxito + Confetti
+                Usuario-->>Game: Elige "Siguiente" o "Salir"
+                alt Siguiente
+                    Game->>Game: Pasa a la siguiente imagen (reinicia intentos)
+                else Salir
+                    Game-->>Menu: Retorna al menú principal
+                end
+            else Similitud baja (Respuesta Incorrecta)
+                Game->>Usuario: Reproduce sonido incorrecto
+                Game->>Usuario: Muestra mensaje "Inténtalo de nuevo"
+                Game->>Game: Decrementa intentos
+            end
+        end
+        
+        %% Si se agotan los intentos, pasa a la siguiente imagen automáticamente
+
+    end

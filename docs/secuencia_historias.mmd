@@ -1,0 +1,62 @@
+sequenceDiagram
+    actor Usuario
+    participant Menu as Menú Principal
+    participant SH as mostrar_seleccion_historias (Personajes)
+    participant SA as mostrar_seleccion_acciones (Acción)
+    participant SL as mostrar_seleccion_lugares (Lugar)
+    participant VF as mostrar_vista_final (Resumen)
+    participant Voice as run_historia_voice_flow
+    participant Audio as SpeechRecognition
+    participant Ollama as verify_story_ollama (IA)
+
+    Menu->>SH: Inicia juego de historias
+    activate SH
+    SH->>Usuario: Muestra cards de personajes
+    Usuario-->>SH: Selecciona 2 personajes y "Siguiente"
+    SH->>SA: Pasa personajes_seleccionados
+    deactivate SH
+    
+    activate SA
+    SA->>Usuario: Muestra cards de acciones
+    Usuario-->>SA: Selecciona 1 acción y "Siguiente"
+    SA->>SL: Pasa personajes y accion
+    deactivate SA
+    
+    activate SL
+    SL->>Usuario: Muestra cards de lugares
+    Usuario-->>SL: Selecciona 1 lugar y "Siguiente"
+    SL->>VF: Pasa personajes, accion y lugar
+    deactivate SL
+    
+    activate VF
+    VF->>Usuario: Reproduce TTS "Con los personajes, acción y lugar..."
+    VF->>Usuario: Muestra resumen de elementos elegidos
+    Usuario-->>VF: Toca "Siguiente"
+    VF->>Voice: Inicia flujo de voz
+    deactivate VF
+    
+    activate Voice
+    Voice->>Usuario: Muestra imagen con botón "Hablar"
+    Usuario-->>Voice: Toca "Hablar"
+    
+    Voice->>Audio: Inicia captura de micrófono
+    Audio-->>Voice: Devuelve texto (Google Speech Recognition)
+    
+    Voice->>Ollama: Envía texto, personajes, acción y lugar
+    Ollama-->>Voice: Evalúa coherencia, conectores y elementos (JSON)
+    
+    alt Historia Correcta (correct: true)
+        Voice->>Usuario: Reproduce sonido correcto y TTS de felicitación
+        Voice->>Usuario: Muestra pantalla de éxito + Confetti
+        Usuario-->>Voice: Elige "Siguiente" o "Salir"
+        alt Siguiente
+            Voice->>SH: Reinicia el juego
+        else Salir
+            Voice-->>Menu: Retorna al menú principal
+            deactivate Voice
+        end
+    else Historia Incorrecta (correct: false)
+        Voice->>Usuario: Reproduce sonido incorrecto
+        Voice->>Usuario: Muestra tips y correcciones devueltos por Ollama
+        Voice->>Voice: Permite volver a intentar (tocar "Hablar" de nuevo)
+    end
