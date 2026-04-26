@@ -217,7 +217,7 @@ class SpeechRecorder:
 class OllamaVerifier:
     """Clase para verificar texto/historias usando Ollama"""
 
-    def __init__(self, model="deepseek-v3"):
+    def __init__(self, model="gemini-3-flash-preview:cloud"):
         self.model = model
         self.client = _get_ollama_client()
 
@@ -316,19 +316,43 @@ Los consejos deben ser dirigidos al niño, no a un profesor."""
         # Comportamiento anterior: prompt genérico
         if not text:
             return "Error: No se proporcionó texto para verificar."
-        prompt = f"""Eres un experto en gramática y redacción en español, 
-        con experiencia en pedagogía y educación. 
-Analiza la siguiente oración u oraciones y verifica:
-1. Si tiene sentido semántico
-2. Si está bien escrita (gramática, ortografía, sintaxis)
-3. Si hay errores, indícalos
+        prompt = f"""
+Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
 
-Oración a verificar: "{text}"
+CRITERIOS DE EVALUACIÓN:
 
-Proporciona una respuesta clara y concisa en español indicando:
-- Si la oración tiene sentido
-- Si está bien escrita
-- Si hay errores, cuáles son y cómo corregirlos"""
+1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
+2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
+3. PARTÍCULAS DE ENLACE: Debe usar al menos uno (y, entonces, luego, porque, pero, etc.).
+4. ELEMENTOS: DEBE incluir (ya sean variaciones, conjugaciones, etc.) OBLIGATORIAMENTE:
+   - Personajes (sujetos): {subjects}
+   - Acciones: {actions}
+   - Lugares: {places}
+   - ACCIONES (estricto): No aceptes sinónimos ni descripciones de la acción. La historia debe reflejar la misma acción pedida con su verbo (conjugaciones, gerundio, infinitivo, etc.). 
+   Ejemplo: si la acción es "TRABAJAR", frases como "atender pacientes" o "hacer la oficina" son INCORRECTAS para cumplir la acción; debe decir explícitamente "trabaja", "trabajó", "trabajando", etc. 
+   Marca "correct": false y da un tip si solo usan equivalentes descriptivos en lugar del verbo de la acción pedida.
+5. CIERRE/CONCLUSIÓN: La historia no puede quedar a medias; debe tener un sentido de finalidad. Se aceptan finales cerrados (ej: "y se durmió")
+ o finales de suspenso/abiertos (ej: "¡y de repente algo se movió en la oscuridad!"), siempre que la oración sea gramaticalmente completa.
+6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
+
+INSTRUCCIONES PARA LOS "TIPS":
+
+- Sé breve y muy amable.
+- Si hay un error, usa el formato: "Dijiste '[error]', pero quedaría mejor así: '[corrección]'".
+- Si FALTA un elemento ya sea sujeto, acción o lugar, has un tip para indicarle que falta.
+- Si la historia es perfecta, usa el primer tip para felicitar un punto específico (ej: "¡Me encantó cómo usaste el conector 'porque'!") y deja el resto del array vacío.
+
+ANÁLISIS PARA "parts":
+- "subjects": fragmentos EXACTOS del texto del niño que correspondan a los sujetos dados.
+- "actions": fragmentos EXACTOS del texto del niño que correspondan a las acciones dadas.
+- "places": fragmentos EXACTOS del texto del niño que correspondan a los lugares dados.
+
+Historia del niño: "{text}"
+
+FORMATO DE RESPUESTA (SOLO JSON EN UNA LÍNEA, sin otro texto):
+
+{{"correct": true o false, "tips": ["consejo1", "consejo2"], "parts": {{"subjects": ["fragmento1"], "actions": ["fragmento2"], "places": ["fragmento3"]}}}}
+"""
         try:
             if self.client is None:
                 return "Error: no se pudo crear el cliente de Ollama online."
@@ -367,7 +391,7 @@ def main():
         print("Advertencia: No se pudo ajustar el ruido ambiente.")
     
     # Inicializar el verificador de Ollama
-    verifier = OllamaVerifier(model="deepseek-v3")
+    verifier = OllamaVerifier(model="gemini-3-flash-preview:cloud")
 
     def _get_story_params():
         """Opcional: pedir personajes, acciones y lugares para el prompt de historia."""

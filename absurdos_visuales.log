@@ -248,3 +248,253 @@
 2026-03-24 18:36:27,814 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
 2026-03-24 18:39:16,833 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
 2026-03-24 19:10:11,084 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: sol-negro.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-26 16:34:56,097 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: pintando-con-banana.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-27 16:08:40,058 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: perro-alas.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-27 16:09:49,333 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: tortuga-patines.png, Intentos restantes: 0, Respuesta correcta: False
+2026-03-27 16:14:38,775 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-10 15:37:19,994 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-10 15:40:22,544 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-10 15:45:11,338 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-10 15:46:16,806 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-13 13:14:16,101 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-13 13:14:16,101 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-13 13:14:16,127 - comtypes.client._generate - INFO - Could not import comtypes.gen._C866CA3A_32F7_11D2_9602_00C04F8EE628_0_5_4: Typelib different than module
+2026-04-13 13:14:16,134 - comtypes.client._generate - INFO - # Generating comtypes.gen._C866CA3A_32F7_11D2_9602_00C04F8EE628_0_5_4
+2026-04-13 13:14:16,211 - comtypes.client._generate - INFO - # Generating comtypes.gen.SpeechLib
+2026-04-13 13:14:16,221 - comtypes.client._generate - INFO - Could not import comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0: Typelib different than module
+2026-04-13 13:14:16,222 - comtypes.client._generate - INFO - # Generating comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0
+2026-04-13 13:14:16,228 - comtypes.client._generate - INFO - # Generating comtypes.gen.stdole
+2026-04-13 13:15:42,499 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-13 13:16:57,084 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-14 16:20:53,760 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-14 16:20:53,761 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-14 16:20:57,894 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:20:57,895 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:20:57,919 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:20:57,920 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:20:58,923 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:20:58,923 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:20:58,945 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:20:58,945 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:01,947 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:01,948 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:01,971 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:01,971 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:06,976 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:06,976 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:06,999 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:06,999 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:08,179 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:08,179 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:08,199 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:08,200 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:09,205 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:09,205 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:09,229 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:09,230 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:12,235 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:12,235 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:12,259 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:12,259 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:17,265 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:17,265 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:17,289 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:17,289 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:18,478 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:18,478 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:18,501 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:18,502 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:19,505 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:19,506 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:19,529 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:19,529 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:22,532 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:22,532 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:22,554 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:22,555 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:27,559 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:27,560 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:27,588 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:27,588 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:28,774 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:28,774 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:28,799 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:28,799 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:29,804 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:29,804 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:29,825 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:29,826 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:32,830 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:32,831 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:32,854 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:32,855 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:37,862 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:37,862 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:37,889 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:37,890 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:39,056 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:39,057 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:39,077 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:39,078 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:40,082 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:40,082 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:40,103 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:40,103 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:21:43,109 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:21:43,109 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:21:43,136 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:21:43,136 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:16,909 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-14 16:22:16,911 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-14 16:22:20,697 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:20,697 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:20,717 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:20,718 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:21,722 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:21,722 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:21,744 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:21,745 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:24,749 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:24,751 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:24,773 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:24,773 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:29,778 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:29,778 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:29,800 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:29,801 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:30,970 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:30,970 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:30,991 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:30,991 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:31,995 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:31,995 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:32,017 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:32,017 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:35,023 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:35,023 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:35,044 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:35,044 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:40,047 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:40,047 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:40,070 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:40,071 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:41,265 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:41,265 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:41,292 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:41,293 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:42,296 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:42,296 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:42,321 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-14 16:22:42,321 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-14 16:22:45,329 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-14 16:22:45,329 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-14 16:22:45,996 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:45,997 - huggingface_hub.utils._http - WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-14 16:22:46,050 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/modules.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,136 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:46,189 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,364 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:46,418 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,504 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:46,557 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/README.md "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,648 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:46,699 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/modules.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,781 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:46,839 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/sentence_bert_config.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:46,929 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
+2026-04-14 16:22:47,014 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:47,068 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/config.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:47,693 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:47,787 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/config.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:47,907 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:47,963 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:48,240 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:48,296 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:48,389 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-14 16:22:48,478 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-04-14 16:22:51,275 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 "HTTP/1.1 200 OK"
+2026-04-14 16:22:51,584 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-14 16:22:51,637 - httpx - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/1_Pooling%2Fconfig.json "HTTP/1.1 200 OK"
+2026-04-14 16:22:51,734 - httpx - INFO - HTTP Request: GET https://huggingface.co/api/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 "HTTP/1.1 200 OK"
+2026-04-17 16:13:43,251 - absurdos_visuales_game - WARNING - Usuario agotó todos los intentos. Imagen: Pez-volador.png, Intentos restantes: 0, Respuesta correcta: False
+2026-04-20 13:14:54,183 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-20 13:14:54,185 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-20 13:29:26,841 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-20 13:29:26,842 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-20 13:31:16,440 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-20 16:20:19,002 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-21 17:09:22,219 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-21 17:09:22,220 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-21 17:11:04,965 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-21 17:12:00,796 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-22 13:22:43,242 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-22 13:24:38,484 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-23 12:04:38,187 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-23 12:05:37,765 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-23 12:06:17,686 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-23 17:35:25,340 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-23 17:36:22,668 - httpx - INFO - HTTP Request: POST https://ollama.com/api/chat "HTTP/1.1 200 OK"
+2026-04-24 14:23:57,310 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-24 14:23:57,311 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'
+2026-04-24 14:24:01,392 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:01,392 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:01,414 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:01,415 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:02,419 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:02,419 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:02,443 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:02,444 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:05,448 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:05,448 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:05,473 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:05,473 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:10,477 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:10,478 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:10,503 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:10,504 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:11,686 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:11,687 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:11,709 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:11,709 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:12,712 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:12,713 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:12,739 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:12,739 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:15,744 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:15,744 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:15,767 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:15,768 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:20,772 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:20,772 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:20,799 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:20,799 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:21,980 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:21,980 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:22,003 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:22,003 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:23,007 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:23,008 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:23,028 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:23,029 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:26,034 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:26,035 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:26,060 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:26,060 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:31,065 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:31,065 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:31,089 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:31,089 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:32,259 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:32,259 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:32,281 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:32,281 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:33,285 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:33,286 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:33,309 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:33,309 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:24:36,314 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2026-04-24 14:24:36,314 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: paraphrase-multilingual-MiniLM-L12-v2
+2026-04-24 14:24:36,336 - huggingface_hub.utils._http - WARNING - '[Errno 11001] getaddrinfo failed' thrown while requesting HEAD https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/adapter_config.json
+2026-04-24 14:24:36,336 - huggingface_hub.utils._http - WARNING - Retrying in 1s [Retry 1/5].
+2026-04-24 14:25:18,958 - comtypes.client._code_cache - INFO - Imported existing <module 'comtypes.gen' from 'C:\\Users\\CHARBEL\\Desktop\\Lingo\\.venv\\lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2026-04-24 14:25:18,958 - comtypes.client._code_cache - INFO - Using writeable comtypes cache directory: 'C:\Users\CHARBEL\Desktop\Lingo\.venv\lib\site-packages\comtypes\gen'

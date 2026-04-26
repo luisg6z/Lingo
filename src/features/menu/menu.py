@@ -15,7 +15,7 @@ import sys
 # Get project root (3 levels up from this file: src/features/menu -> src -> project root)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, project_root)
-from src.core.calibration import load_touch_depth_maps
+from src.core.calibration import load_touch_depth_maps, map_depth_roi_to_viewport
 from src.core.ui_utils import scale_to_videobeam, draw_logo
 from src.components import draw_rectangular_button
 
@@ -640,10 +640,10 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                     if M['m00'] != 0:
                         cx = int(M['m10'] / M['m00'])
                         cy = int(M['m01'] / M['m00'])
-                        
-                        # Mapeo de coordenadas de ventana a viewport
-                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+
+                        x_touch, y_touch = map_depth_roi_to_viewport(
+                            cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                        )
                         
                         # Agregar a historial (usar coordenadas discretizadas para agrupar toques cercanos)
                         touch_key = (x_touch // 25, y_touch // 25)  # Agrupar toques dentro de 25 píxeles
@@ -1263,11 +1263,11 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                     M = cv2.moments(contour)
                     if M["m00"] != 0:
                         cx = int(M["m10"] / M["m00"])
-                        cy = int(M["m01"] / M["m00"]) + yw_min
+                        cy = int(M["m01"] / M["m00"])
 
-                        # Mapeo de coordenadas de ventana a viewport
-                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                        x_touch, y_touch = map_depth_roi_to_viewport(
+                            cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                        )
 
                         # Detectar si se seleccionó una opción
                         opcion_seleccionada = detectar_opcion_seleccionada(x_touch, y_touch, areas_opciones)

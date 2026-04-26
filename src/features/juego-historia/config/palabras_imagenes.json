@@ -8,7 +8,7 @@
     "Maestra": ["maestra"]
   },
   "acciones": {
-    "Ayudar": ["ayudar", "ayuda", "ayudó"],
+    "Ayudar": ["ayudar", "ayuda", "ayudó", "ayude", "ayudes", "ayudemos", "ayuden", "ayudando", "ayudaba", "ayudaban"],
     "Trabajar": ["trabajar", "trabaja", "trabajó"],
     "Cocinar": ["cocinar", "cocina", "cocinando"],
     "Correr": ["correr", "corre", "corrió"],
@@ -19,7 +19,7 @@
     "Casa": ["casa"],
     "Clinica": ["clínica", "clinica"],
     "Escuela": ["escuela"],
-    "Estacion-policia": ["estación de policía", "estacion de policia", "estación", "estacion", "policía", "policia"],
+    "Estacion-policia": ["estación de policía", "estacion de policia", "estación de", "estacion de", "estación", "estacion"],
     "Parque": ["parque"],
     "Cocina": ["cocina"]
   }

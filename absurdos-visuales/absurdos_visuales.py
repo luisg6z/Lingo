@@ -1492,7 +1492,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 yv_max = coordenadas["yv_max"]
                 
                 # Initialize confetti system with multiple bursts
-                confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+                confetti_system = ConfettiSystem(view_width, view_height, num_particles=120)
                 confetti_system.start(multiple_bursts=True, num_burst_points=3)
                 
                 # Crear pantalla de éxito usando función genérica

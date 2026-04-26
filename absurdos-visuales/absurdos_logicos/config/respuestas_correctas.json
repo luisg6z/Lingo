@@ -166,20 +166,21 @@
       ]
     },
     {
-      "id": 10,
-      "imagen": "pecera-sin-agua.png",
-      "respuestas_correctas": [
-        "la pecera no puede estar sin agua, debe tener agua",
-        "está mal porque las peceras tienen agua no están vacías",
-        "las peceras no están sin agua, tienen agua",
-        "es incorrecto, una pecera debe tener agua",
-        "está mal, las peceras no están sin agua",
-        "es imposible que una pecera esté sin agua",
-        "las peceras tienen agua no están vacías",
-        "no es correcto, debería tener agua",
-        "está mal porque las peceras no están sin agua",
-        "una pecera no puede estar sin agua"
-      ]
+        "id": 10,
+        "imagen": "pecera-sin-agua.png",
+        "respuestas_correctas": [
+          "el pez no puede volar, debería estar nadando en el agua",
+          "está mal porque los peces no vuelan, nadan en el agua",
+          "los peces no vuelan, están en el agua",
+          "es incorrecto, un pez debe estar en el agua no en el cielo",
+          "está mal, los peces no vuelan",
+          "es imposible que un pez vuele",
+          "los peces nadan en el agua, no vuelan por el cielo",
+          "no es correcto, debería estar en el agua",
+          "está mal porque los peces no pueden volar",
+          "un pez no puede volar, debe estar en el agua"
+     
+        ]
     },
     {
       "id": 11,
@@ -194,7 +195,8 @@
         "los perros no tienen alas",
         "no es correcto, no debería tener alas",
         "está mal porque los perros no tienen alas",
-        "un perro no puede tener alas"
+        "un perro no puede tener alas",
+        "el perro tiene alas de mariposa"
       ]
     },
     {
@@ -313,7 +315,8 @@
         "la sopa se come con cuchara no con tenedor",
         "no es correcto, debería usar cuchara",
         "está mal porque no se come sopa con tenedor",
-        "no se puede comer sopa con tenedor"
+        "no se puede comer sopa con tenedor",
+        "que está comiendo sopa con el tenedor"
       ]
     },
     {
@@ -361,7 +364,8 @@
         "se tienen dos piernas no tres",
         "no es correcto, debería tener dos piernas",
         "está mal porque no se puede tener tres piernas",
-        "no se puede tener tres piernas"
+        "no se puede tener tres piernas",
+        "El niño tiene tres piernas"
       ]
     },
     {
@@ -377,7 +381,8 @@
         "se escribe con lápiz no con zanahoria",
         "no es correcto, debería usar un lápiz",
         "está mal porque no se puede escribir con zanahoria",
-        "no se puede escribir con una zanahoria"
+        "no se puede escribir con una zanahoria",
+        "la niña está escribiendo con una zanahoria"
       ]
     },
     {

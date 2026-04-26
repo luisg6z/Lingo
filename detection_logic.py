@@ -3,6 +3,8 @@ import numpy as np
 from ultralytics import YOLO
 import os
 
+from src.core.calibration import map_camera_to_viewport
+
 # Model path
 MODEL_PATH = r"runs\detect\runs\detect\yolo12_animal_detection\weights\best.pt"
 
@@ -122,29 +124,13 @@ class ObjectDetector:
         
         return detections
 
-    def map_coordinates(self, x, y, coordenadas):
+    def map_coordinates(self, x, y, coordenadas, view_width=1280, view_height=800):
         """
-        Maps camera coordinates to projection coordinates.
-        camera: 640x480 -> projection: 1280x800
+        Pasa coordenadas del frame de color 640×480 (flipped) al viewport.
+        Si ``coordenadas`` incluye ``homography_matrix``, usa la misma corrección
+        que la detección de toques; si no, escalado lineal sobre xv_/xw_.
         """
-        xw_min = coordenadas["xw_min"]
-        xw_max = coordenadas["xw_max"]
-        yw_min = coordenadas["yw_min"]
-        yw_max = coordenadas["yw_max"]
-        xv_min = coordenadas["xv_min"]
-        xv_max = coordenadas["xv_max"]
-        yv_min = coordenadas["yv_min"]
-        yv_max = coordenadas["yv_max"]
-        
-        # Simple linear mapping (as seen in EXPLICACION_SISTEMA.md fallbacks)
-        # Note: If homography is available and needed, it should be passed here.
-        sx = float(xv_max - xv_min) / (xw_max - xw_min)
-        sy = float(yv_max - yv_min) / (yw_max - yw_min)
-        
-        x_proj = xv_min + (x - xw_min) * sx
-        y_proj = yv_min + (y - yw_min) * sy
-        
-        return int(x_proj), int(y_proj)
+        return map_camera_to_viewport(x, y, coordenadas, view_width, view_height)
 
 def draw_shine_effect(screen, x, y, width, height, color=(255, 255, 255)):
     """
