@@ -15,6 +15,13 @@ if _project_root not in sys.path:
 
 from src.components import draw_circular_button, is_point_in_circular_button
 
+from .helpers import (
+    HISTORIA_RESUMEN_CARD_HEIGHT,
+    HISTORIA_RESUMEN_CARD_SPACING,
+    HISTORIA_RESUMEN_CARD_WIDTH,
+    HISTORIA_RESUMEN_CARDS_START_Y,
+    historia_hablar_button_layout,
+)
 from .voice_flow import run_historia_voice_flow
 
 def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados, existing_window_name=None):
@@ -171,45 +178,41 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
         return (close_card_detection_x_final <= x_touch <= close_card_detection_x_final + close_card_detection_w_final and
                 close_card_detection_y_final <= y_touch <= close_card_detection_y_final + close_card_detection_h_final)
     
-    # Importar componente de botón circular
-    from src.components import draw_circular_button, is_point_in_circular_button
-    
-    # Botón circular "Hablar" (misma lógica y posición que absurdos-visuales)
-    # Calcular posición igual que en absurdos-visuales
-    circle_radius_hablar = 60
-    circle_center_x_hablar = view_width // 2
-    espacio_para_franja = 100  # Espacio necesario para la franja "Escuchando..." (50 arriba + 50 abajo)
-    # Posición del botón: cerca de la parte inferior pero dejando espacio para la franja
-    circle_center_y_hablar = view_height - espacio_para_franja - circle_radius_hablar
-    
+    circle_center_x_hablar, circle_center_y_hablar, circle_radius_hablar = historia_hablar_button_layout(
+        view_width, view_height
+    )
+
     hablar_button_bounds_final = None  # Se inicializará cuando se dibuje
     
     # Cargar imágenes de sujetos, acciones y lugares
+    # Sujetos: Niño, Niña, Cocinera, Policia, Doctor, Maestra
     historias = [
         {"nombre": "Niño", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Niño.png"},
         {"nombre": "Niña", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Niña.png"},
-        {"nombre": "Doctor", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/doctor.png"},
-        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"},
+        {"nombre": "Cocinera", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinera.png"},
         {"nombre": "Policia", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Policia.png"},
-        {"nombre": "Perro", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Perro.png"}
+        {"nombre": "Doctor", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Doctor.png"},
+        {"nombre": "Maestra", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Maestra.png"}
     ]
     
+    # Acciones: Ayudar, Trabajar, Cocinar, Correr, Llamar, Jugar
     acciones = [
-        {"nombre": "Dar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Dar.png"},
-        {"nombre": "Ayudar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
-        {"nombre": "Correr", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
-        {"nombre": "Jugar", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Jugar.png"},
+        {"nombre": "Ayudar", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Ayudar.png"},
+        {"nombre": "Trabajar", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"},
+        {"nombre": "Cocinar", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Cocinar.png"},
+        {"nombre": "Correr", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Correr.png"},
         {"nombre": "Llamar", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Llamar.png"},
-        {"nombre": "Trabajar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Trabajar.png"}
+        {"nombre": "Jugar", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Jugar.png"}
     ]
     
+    # Lugares: Casa, Clinica, Escuela, Estacion-policia, Parque, Cocina
     lugares = [
-        {"nombre": "Calle", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Calle.png"},
+        {"nombre": "Casa", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
         {"nombre": "Clinica", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Clinica.png"},
-        {"nombre": "Estacion-Policia", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
-        {"nombre": "Escuela", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
-        {"nombre": "Casa", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
-        {"nombre": "Parque", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Parque.png"}
+        {"nombre": "Escuela", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
+        {"nombre": "Estacion-policia", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
+        {"nombre": "Parque", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Parque.png"},
+        {"nombre": "Cocina", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Cocina.png"}
     ]
     
     # Crear diccionarios para buscar imágenes
@@ -275,15 +278,15 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
                 })
                 break
     
-    # Dimensiones de las cards (4 cards en una fila)
-    card_width = 250
-    card_height = 300
-    card_spacing = 30
-    
+    # Dimensiones de las cards (mismas que preparación de mic / voice_flow)
+    card_width = HISTORIA_RESUMEN_CARD_WIDTH
+    card_height = HISTORIA_RESUMEN_CARD_HEIGHT
+    card_spacing = HISTORIA_RESUMEN_CARD_SPACING
+
     # Calcular posiciones (centradas, 4 cards en una fila)
     total_width = len(cards_final) * card_width + (len(cards_final) - 1) * card_spacing
     start_x = (view_width - total_width) // 2
-    start_y = 250  # Debajo del logo
+    start_y = HISTORIA_RESUMEN_CARDS_START_Y
     
     card_positions_final = {}
     for idx, card in enumerate(cards_final):
@@ -424,7 +427,7 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
                 if 'spanish' in voice.name.lower() or 'español' in voice.name.lower():
                     engine_tts.setProperty('voice', voice.id)
                     break
-            engine_tts.say("Con los personajes, acción y lugar seleccionados, piensa en una historia, cuando estés listo, presiona el botón para hablar")
+            engine_tts.say("Vamos a jugar a crear historias. Con este personaje, acción y lugar. Tu reto es unirlos todos en una sola oración y ¡no olvides explicar por qué está sucediendo! Cuando estés listo, presiona el botón para hablar")
             engine_tts.runAndWait()
         except Exception as e:
             print(f"Error al decir instrucción: {e}")

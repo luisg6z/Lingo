@@ -6,6 +6,8 @@ import sys
 import time
 import math
 import re
+import json
+import unicodedata
 import threading
 import cv2
 import numpy as np
@@ -25,8 +27,13 @@ if _project_root not in sys.path:
 from src.core.font_utils import get_ubuntu_font, calculate_word_positions
 from src.features.confetti import ConfettiSystem
 from src.components.rectangular_button import draw_rectangular_button, is_point_in_rectangular_button
-
-from .helpers import put_text_safe_historia, get_historia_story_voice
+from .helpers import (
+    put_text_safe_historia,
+    get_historia_story_voice,
+    build_historia_voice_prep_cards,
+    draw_historia_voice_prep_cards,
+    historia_resumen_status_line_y,
+)
 
 def run_historia_voice_flow(window_name, view_width, view_height, scale_to_videobeam, draw_logo_func,
                              sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados,
@@ -47,6 +54,24 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
             b = int(255 * (0.8 - 0.3 * ratio))
             screen[y, :] = [b, g, r]
         return screen
+
+    # Asegurar que la ventana esté siempre en pantalla completa en el videobeam
+    try:
+        visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+        window_exists = visible >= 0
+    except Exception:
+        window_exists = False
+
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        try:
+            cv2.moveWindow(window_name, 1920, 0)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except Exception:
+            pass
 
     sv = get_historia_story_voice()
     get_required_words = sv.get_required_words
@@ -140,76 +165,55 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         except Exception:
             return
 
-    # 1) Show "Preparando..." first; then "Ahora puedes hablar" only after listening has started
+    # 1) Mismas cards que el resumen; sin botón Hablar en la escucha (desaparece al mostrar "Ahora habla")
     font = cv2.FONT_HERSHEY_DUPLEX
-    fs_prep, th_prep = 1.5, 3  # Mismo tamaño y grosor que "Comprobando tu historia"
-    prep_screen = _gradient_screen()
-    draw_logo_func(prep_screen)
-    msg_prep = "Preparando micrófono..."
-    
-    # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
-    try:
-        from PIL import Image, ImageDraw
-        from src.core.font_utils import get_ubuntu_font
-        font_ubuntu = get_ubuntu_font(font_scale=fs_prep, bold=True)
-        img_pil = Image.fromarray(cv2.cvtColor(prep_screen, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(img_pil)
-        try:
-            bbox = draw.textbbox((0, 0), msg_prep, font=font_ubuntu)
-            text_width_prep = bbox[2] - bbox[0]
-        except AttributeError:
-            bbox = font_ubuntu.getbbox(msg_prep) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
-            text_width_prep = bbox[2] - bbox[0]
-    except:
-        text_size_prep, _ = cv2.getTextSize(msg_prep, font, fs_prep, th_prep)
-        text_width_prep = text_size_prep[0]
-    
-    # Centrar texto horizontalmente
-    tx_prep = (view_width - text_width_prep) // 2
-    ty_prep = view_height // 2
-    
-    # Dibujar texto con sombra y más grande
-    put_text_safe_historia(prep_screen, msg_prep, (tx_prep + 2, ty_prep + 2), font, fs_prep, (0, 0, 0), th_prep + 1, bold=True)
-    put_text_safe_historia(prep_screen, msg_prep, (tx_prep, ty_prep), font, fs_prep, (255, 255, 255), th_prep, bold=True)
-    cv2.imshow(window_name, scale_to_videobeam(prep_screen))
-    cv2.waitKey(100)
+    fs_prep, th_prep = 1.5, 3
+    prep_card_positions = build_historia_voice_prep_cards(
+        sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados, view_width
+    )
 
-    def _show_ahora_puedes_hablar():
-        esc_screen = _gradient_screen()
-        draw_logo_func(esc_screen)
-        msg = "Ahora puedes hablar"
-        
-        # Usar mismo tamaño y estilo que "Comprobando tu historia"
-        fs_esc, th_esc = 1.5, 3  # Mismo tamaño y grosor que "Comprobando tu historia"
-        
-        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
+    prep_base_screen = _gradient_screen()
+    draw_logo_func(prep_base_screen)
+    if prep_card_positions:
+        draw_historia_voice_prep_cards(prep_base_screen, prep_card_positions)
+    try:
+        draw_close_card_final_fn(prep_base_screen, False)
+    except Exception:
+        pass
+
+    ty_msg_base = historia_resumen_status_line_y() if prep_card_positions else view_height // 2
+    ty_msg_listening = ty_msg_base + 40
+
+    def _draw_voice_mic_prep_screen(status_message, text_y):
+        screen = prep_base_screen.copy()
+        msg = status_message
         try:
             from PIL import Image, ImageDraw
             from src.core.font_utils import get_ubuntu_font
-            font_ubuntu = get_ubuntu_font(font_scale=fs_esc, bold=True)
-            img_pil = Image.fromarray(cv2.cvtColor(esc_screen, cv2.COLOR_BGR2RGB))
+            font_ubuntu = get_ubuntu_font(font_scale=fs_prep, bold=True)
+            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(img_pil)
             try:
                 bbox = draw.textbbox((0, 0), msg, font=font_ubuntu)
-                text_width_esc = bbox[2] - bbox[0]
+                text_w = bbox[2] - bbox[0]
             except AttributeError:
                 bbox = font_ubuntu.getbbox(msg) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
-                text_width_esc = bbox[2] - bbox[0]
-        except:
-            text_size_esc, _ = cv2.getTextSize(msg, font, fs_esc, th_esc)
-            text_width_esc = text_size_esc[0]
-        
-        # Centrar texto horizontalmente
-        tx = (view_width - text_width_esc) // 2
-        ty = view_height // 2
-        
-        # Dibujar texto con sombra y más grande
-        put_text_safe_historia(esc_screen, msg, (tx + 2, ty + 2), font, fs_esc, (0, 0, 0), th_esc + 1, bold=True)
-        put_text_safe_historia(esc_screen, msg, (tx, ty), font, fs_esc, (255, 255, 255), th_esc, bold=True)
-        cv2.imshow(window_name, scale_to_videobeam(esc_screen))
+                text_w = bbox[2] - bbox[0]
+        except Exception:
+            text_size, _ = cv2.getTextSize(msg, font, fs_prep, th_prep)
+            text_w = text_size[0]
+        tx = (view_width - text_w) // 2
+        put_text_safe_historia(screen, msg, (tx + 2, text_y + 2), font, fs_prep, (0, 0, 0), th_prep + 1, bold=True)
+        put_text_safe_historia(screen, msg, (tx, text_y), font, fs_prep, (255, 255, 255), th_prep, bold=True)
+        cv2.imshow(window_name, scale_to_videobeam(screen))
         cv2.waitKey(1)
 
-    text = listen_and_transcribe(timeout=10, phrase_time_limit=10, on_listening_started=_show_ahora_puedes_hablar)
+    # Vista "Ahora habla" en el hilo principal lo antes posible; luego se abre el mic (sin esperar al callback).
+    _draw_voice_mic_prep_screen("Ahora habla", ty_msg_listening)
+    # Sin tope duro de 10 s: la frase corta cuando hay ~2 s de silencio (silence_seconds en story_voice).
+    text = listen_and_transcribe(
+        timeout=10, phrase_time_limit=None, silence_seconds=2.0, on_listening_started=None
+    )
     if not text:
         text = ""
 
@@ -311,7 +315,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                 subjects=sujetos_seleccionados,
                 actions=acciones_seleccionadas,
                 places=lugares_seleccionados,
-                model="deepseek-v3.2:cloud",
+                model="gemini-3-flash-preview:cloud",
             )
         done_holder[0] = True
     thr = threading.Thread(target=_ollama_thread, daemon=True)
@@ -386,7 +390,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
     # Initialize confetti system if story is correct
     confetti_system = None
     if result.get("correct", False):
-        confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+        confetti_system = ConfettiSystem(view_width, view_height, num_particles=120)
         confetti_system.start(multiple_bursts=True, num_burst_points=3)
         # Reproducir sonido de correcto (mismo que en otras vistas) cuando la historia es correcta
         try:
@@ -408,7 +412,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
     # Acelerar confetti en historias (en otros juegos se percibe más rápido por mayor FPS)
     confetti_speed_mult = 4  # Aumentado de 2 a 4 para hacer el confetti más rápido
 
-    # 4) Result screen: LingoBien/LingoMal + sentence (highlighted) + tips + X
+    # 4) Pantalla de resultado: LingoBien/LingoMal + oración coloreada + consejos (sin botón X)
     # Cargar logo según si la historia es correcta o no
     is_correct = result.get("correct", False)
     if is_correct:
@@ -430,13 +434,45 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    def _draw_result_screen(screen, elevated_close=False):
-        for y in range(view_height):
-            ratio = y / view_height
-            r = int(255 * (0.3 + 0.4 * ratio))
-            g = int(200 * (0.5 + 0.3 * ratio))
-            b = int(255 * (0.8 - 0.3 * ratio))
-            screen[y, :] = [b, g, r]
+    # Vocabulario JSON para coloreo: una sola lectura (antes se hacía json.load en cada redibujado → lag enorme con confetti).
+    def _dedupe_historia_vocab(items):
+        seen = set()
+        out = []
+        for x in items:
+            if x is None:
+                continue
+            s = str(x).strip()
+            if not s:
+                continue
+            key = s.lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(s)
+        return out
+
+    _historia_subjects_vocab = []
+    _historia_actions_vocab = []
+    _historia_places_vocab = []
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            _data_palabras_hist = json.load(f)
+        for s in (sujetos_seleccionados or []):
+            _historia_subjects_vocab.extend(_data_palabras_hist.get("sujetos", {}).get(s, []))
+        for a in (acciones_seleccionadas or []):
+            _historia_actions_vocab.extend(_data_palabras_hist.get("acciones", {}).get(a, []))
+        for p in (lugares_seleccionados or []):
+            _historia_places_vocab.extend(_data_palabras_hist.get("lugares", {}).get(p, []))
+    except Exception:
+        pass
+    _historia_subjects_vocab = _dedupe_historia_vocab(_historia_subjects_vocab)
+    _historia_actions_vocab = _dedupe_historia_vocab(_historia_actions_vocab)
+    _historia_places_vocab = _dedupe_historia_vocab(_historia_places_vocab)
+
+    def _draw_result_screen(screen):
+        ratio_col = np.linspace(0.0, 1.0, view_height, dtype=np.float32)[:, np.newaxis]
+        screen[:, :, 0] = (255 * (0.8 - 0.3 * ratio_col)).astype(np.uint8)
+        screen[:, :, 1] = (200 * (0.5 + 0.3 * ratio_col)).astype(np.uint8)
+        screen[:, :, 2] = (255 * (0.3 + 0.4 * ratio_col)).astype(np.uint8)
         draw_logo_func(screen)
         # LingoBien/LingoMal (más pequeño, LingoMal aún más pequeño)
         if lingo_img is not None:
@@ -472,153 +508,207 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         thickness = 3
         max_width = view_width - 80
         
-        # Get required words directly from config to only color those target words
-        subjects_list = []
-        actions_list = []
-        places_list = []
-        try:
-            import json
-            with open(config_path, "r", encoding="utf-8") as f:
-                data_palabras = json.load(f)
-            for s in (sujetos_seleccionados or []):
-                subjects_list.extend(data_palabras.get("sujetos", {}).get(s, []))
-            for a in (acciones_seleccionadas or []):
-                actions_list.extend(data_palabras.get("acciones", {}).get(a, []))
-            for p in (lugares_seleccionados or []):
-                places_list.extend(data_palabras.get("lugares", {}).get(p, []))
-        except Exception:
-            # Fallback a lo que devuelva Ollama
-            parts = result.get("parts", {})
-            subjects_list = parts.get("subjects", [])
-            actions_list = parts.get("actions", [])
-            places_list = parts.get("places", [])
-        
-        # Create normalized sets for matching
+        # Coloreo alineado con la consola (parts del modelo): primero fragmentos de Ollama en orden
+        # sujeto → acción → lugar, una aparición por fragmento en índices libres; luego vocabulario JSON
+        # solo en palabras no reclamadas (evita que acción "cocina" y lugar "la cocina" queden del mismo color).
+        subjects_vocab = _historia_subjects_vocab
+        actions_vocab = _historia_actions_vocab
+        places_vocab = _historia_places_vocab
+        parts = result.get("parts", {}) or {}
+        o_subjects = parts.get("subjects", []) or []
+        o_actions = parts.get("actions", []) or []
+        o_places = parts.get("places", []) or []
+
+        def _as_fragment_list(val):
+            if val is None:
+                return []
+            if isinstance(val, list):
+                return [str(x).strip() for x in val if x is not None and str(x).strip()]
+            s = str(val).strip()
+            return [s] if s else []
+
+        # Normalizar para coincidir frases aunque cambien tildes (estación / estacion)
         def normalize_word(word):
-            """Normalize word by removing punctuation and converting to lowercase"""
-            return re.sub(r"[^\wáéíóúñü]", "", word.lower())
-        
-        def word_matches(word_norm, word_list):
-            """Check if normalized word matches any word in the list (exact or partial match)"""
-            for w in word_list:
-                w_norm = normalize_word(w)
-                if word_norm == w_norm or word_norm.startswith(w_norm) or w_norm.startswith(word_norm):
-                    return True
-            return False
-        
-        # Colors for different parts (BGR: Blue, Green, Red)
-        # Hex: Sujeto F73D3D, Acción 39E355, Lugar 39E8FF
-        subject_color = (61, 61, 247)      # Sujeto: #F73D3D -> BGR (61, 61, 247)
-        place_color = (255, 232, 57)       # Lugar: #39E8FF -> BGR (255, 232, 57) = cyan
-        action_color = (85, 227, 57)       # Acción: #39E355 -> BGR (85, 227, 57)
-        
-        # Calculate word positions using utility function
-        word_positions_data = calculate_word_positions(display_text, 40, y_pos, font_scale, max_width, bold=False)
-        
-        # Function to match phrases (multi-word sequences) and single words in the text
-        def find_phrase_positions(phrase_list, word_positions_data):
-            """Find positions of phrases (which may span multiple words) or single words in the text"""
-            phrase_matches = []
+            w = re.sub(r"[^\wáéíóúñü]", "", (word or "").lower())
+            w = unicodedata.normalize("NFD", w)
+            return "".join(c for c in w if unicodedata.category(c) != "Mn")
+
+        def _clean_token_edges(word):
+            s = str(word or "").strip()
+            s = re.sub(r'^[^\wáéíóúñüÁÉÍÓÚÑÜ]+', "", s)
+            s = re.sub(r'[^\wáéíóúñüÁÉÍÓÚÑÜ]+$', "", s)
+            return s
+
+        def _model_fragment_word_match(token, frag_word):
+            """Coincide token del STT con palabra del fragmento del modelo (mayúsculas / forma exacta)."""
+            ct = _clean_token_edges(token)
+            fw = (frag_word or "").strip()
+            if not fw:
+                return False
+            if ct == fw:
+                return True
+            if ct.lower() == fw.lower():
+                return True
+            return normalize_word(ct) == normalize_word(fw)
+
+        def _span_dict_from_range(wp_data, si, ei, phrase, kind):
+            start_wp = wp_data[si]
+            end_wp = wp_data[ei]
+            return {
+                "start_idx": si,
+                "end_idx": ei,
+                "x_start": start_wp["x_start"],
+                "x_end": end_wp["x_end"],
+                "y": start_wp["y"],
+                "phrase": phrase,
+                "kind": kind,
+            }
+
+        def _try_claim_phrase_model(phrase, kind, wp_data, claimed):
+            phrase_words = phrase.split()
+            n = len(phrase_words)
+            if n == 0:
+                return None
+            for i in range(len(wp_data) - n + 1):
+                idxs = range(i, i + n)
+                if any(j in claimed for j in idxs):
+                    continue
+                if all(_model_fragment_word_match(wp_data[i + j]["word"], phrase_words[j]) for j in range(n)):
+                    for j in idxs:
+                        claimed.add(j)
+                    return _span_dict_from_range(wp_data, i, i + n - 1, phrase, kind)
+            return None
+
+        def collect_model_part_spans(o_subj, o_act, o_plc, wp_data, claimed):
+            out = []
+            for phrase in _as_fragment_list(o_subj):
+                sp = _try_claim_phrase_model(phrase, "subject", wp_data, claimed)
+                if sp:
+                    out.append(sp)
+            for phrase in _as_fragment_list(o_act):
+                sp = _try_claim_phrase_model(phrase, "action", wp_data, claimed)
+                if sp:
+                    out.append(sp)
+            for phrase in _as_fragment_list(o_plc):
+                sp = _try_claim_phrase_model(phrase, "place", wp_data, claimed)
+                if sp:
+                    out.append(sp)
+            return out
+
+        def find_vocab_spans_leftmost(phrase_list, wp_data, claimed, kind):
+            """Una coincidencia por entrada de lista, la más a la izquierda sin solapar índices ya usados."""
+            matches = []
             for phrase in phrase_list:
                 if not phrase or not phrase.strip():
                     continue
                 phrase_words = phrase.split()
-                
-                # Handle single word
-                if len(phrase_words) == 1:
+                n = len(phrase_words)
+                if n == 1:
                     phrase_norm = normalize_word(phrase_words[0])
-                    for idx, wp_data in enumerate(word_positions_data):
-                        word_norm = normalize_word(wp_data['word'])
-                        if word_norm == phrase_norm or word_norm.startswith(phrase_norm) or phrase_norm.startswith(word_norm):
-                            phrase_matches.append({
-                                'start_idx': idx,
-                                'end_idx': idx,
-                                'x_start': wp_data['x_start'],
-                                'x_end': wp_data['x_end'],
-                                'y': wp_data['y'],
-                                'phrase': phrase
-                            })
+                    found_idx = None
+                    for idx, wpd in enumerate(wp_data):
+                        if idx in claimed:
+                            continue
+                        word_norm = normalize_word(wpd["word"])
+                        if (
+                            word_norm == phrase_norm
+                            or word_norm.startswith(phrase_norm)
+                            or phrase_norm.startswith(word_norm)
+                        ):
+                            found_idx = idx
+                            break
+                    if found_idx is not None:
+                        claimed.add(found_idx)
+                        matches.append(_span_dict_from_range(wp_data, found_idx, found_idx, phrase, kind))
                 else:
-                    # Handle multi-word phrase
                     phrase_norms = [normalize_word(w) for w in phrase_words]
-                    
-                    # Try to find the phrase in consecutive words
-                    for i in range(len(word_positions_data) - len(phrase_words) + 1):
-                        # Check if consecutive words match the phrase
-                        match = True
-                        for j, phrase_word_norm in enumerate(phrase_norms):
-                            word_norm = normalize_word(word_positions_data[i + j]['word'])
-                            if word_norm != phrase_word_norm and not (word_norm.startswith(phrase_word_norm) or phrase_word_norm.startswith(word_norm)):
-                                match = False
+                    for i in range(len(wp_data) - n + 1):
+                        idxs = list(range(i, i + n))
+                        if any(j in claimed for j in idxs):
+                            continue
+                        ok = True
+                        for j, pn in enumerate(phrase_norms):
+                            word_norm = normalize_word(wp_data[i + j]["word"])
+                            if (
+                                word_norm != pn
+                                and not (word_norm.startswith(pn) or pn.startswith(word_norm))
+                            ):
+                                ok = False
                                 break
-                        
-                        if match:
-                            # Found a match - get the span
-                            start_wp = word_positions_data[i]
-                            end_wp = word_positions_data[i + len(phrase_words) - 1]
-                            phrase_matches.append({
-                                'start_idx': i,
-                                'end_idx': i + len(phrase_words) - 1,
-                                'x_start': start_wp['x_start'],
-                                'x_end': end_wp['x_end'],
-                                'y': start_wp['y'],  # Use first word's y position
-                                'phrase': phrase
-                            })
-            return phrase_matches
-        
-        # Find phrase positions for each category
-        subject_phrases = find_phrase_positions(subjects_list, word_positions_data)
-        action_phrases = find_phrase_positions(actions_list, word_positions_data)
-        place_phrases = find_phrase_positions(places_list, word_positions_data)
-        
-        # Build underline info from phrase matches
-        underline_info = []
-        
-        # Combine all phrase matches with their categories
-        all_phrases = []
-        for sp in subject_phrases:
-            all_phrases.append({**sp, 'is_subject': True, 'is_action': False, 'is_place': False})
-        for ap in action_phrases:
-            # Check if this phrase is already in the list (might overlap with subject/place)
-            existing = next((p for p in all_phrases if p.get('start_idx') == ap.get('start_idx') and p.get('end_idx') == ap.get('end_idx')), None)
-            if existing:
-                existing['is_action'] = True
-            else:
-                all_phrases.append({**ap, 'is_subject': False, 'is_action': True, 'is_place': False})
-        for pp in place_phrases:
-            existing = next((p for p in all_phrases if p.get('start_idx') == pp.get('start_idx') and p.get('end_idx') == pp.get('end_idx')), None)
-            if existing:
-                existing['is_place'] = True
-            else:
-                all_phrases.append({**pp, 'is_subject': False, 'is_action': False, 'is_place': True})
-        
-        underline_info = all_phrases
+                        if ok:
+                            for j in idxs:
+                                claimed.add(j)
+                            matches.append(_span_dict_from_range(wp_data, i, i + n - 1, phrase, kind))
+                            break
+            return matches
 
-        # Marcar palabras por categoría usando índices
+        # Colores por categoría (BGR)
+        subject_color = (0, 220, 255)      # Sujeto: amarillo
+        place_color = (255, 232, 57)       # Lugar: cian
+        action_color = (85, 227, 57)      # Acción: verde
+        
+        # Calculate word positions using utility function
+        word_positions_data = calculate_word_positions(display_text, 40, y_pos, font_scale, max_width, bold=False)
+
+        claimed = set()
+        accepted_spans = collect_model_part_spans(
+            o_subjects, o_actions, o_places, word_positions_data, claimed
+        )
+        # Vocabulario JSON: sujeto → acción → lugar (misma prioridad que al aplicar parts) si la misma forma encaja en dos listas
+        accepted_spans.extend(
+            find_vocab_spans_leftmost(subjects_vocab, word_positions_data, claimed, "subject")
+        )
+        accepted_spans.extend(
+            find_vocab_spans_leftmost(actions_vocab, word_positions_data, claimed, "action")
+        )
+        accepted_spans.extend(
+            find_vocab_spans_leftmost(places_vocab, word_positions_data, claimed, "place")
+        )
+
         subject_word_idxs = set()
         place_word_idxs = set()
         action_word_idxs = set()
-
-        def _add_range(out_set, start_idx, end_idx):
-            if start_idx is None or end_idx is None:
-                return
+        for sp in accepted_spans:
             try:
-                si = int(start_idx)
-                ei = int(end_idx)
+                si = int(sp["start_idx"])
+                ei = int(sp["end_idx"])
             except Exception:
-                return
+                continue
             if ei < si:
                 si, ei = ei, si
-            for k in range(si, ei + 1):
-                out_set.add(k)
+            idxs = range(si, ei + 1)
+            kind = sp.get("kind")
+            if kind == "subject":
+                subject_word_idxs.update(idxs)
+            elif kind == "place":
+                place_word_idxs.update(idxs)
+            elif kind == "action":
+                action_word_idxs.update(idxs)
 
-        for ui in underline_info:
-            if ui.get("is_subject"):
-                _add_range(subject_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
-            if ui.get("is_place"):
-                _add_range(place_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
-            if ui.get("is_action"):
-                _add_range(action_word_idxs, ui.get("start_idx"), ui.get("end_idx"))
+        # Refuerzo: trío frecuente "estación/estacion" + "de" + "policía/policia" => todo lugar
+        # (si la frase larga no matcheó palabra a palabra, evita colorear solo "policía" como sujeto).
+        n_words = len(word_positions_data)
+        for i in range(n_words - 2):
+            w0 = normalize_word(word_positions_data[i]["word"])
+            w1 = normalize_word(word_positions_data[i + 1]["word"])
+            w2 = normalize_word(word_positions_data[i + 2]["word"])
+            if w0 == "estacion" and w1 == "de" and w2 == "policia":
+                for j in (i, i + 1, i + 2):
+                    subject_word_idxs.discard(j)
+                    action_word_idxs.discard(j)
+                    place_word_idxs.add(j)
+
+        underline_info = [
+            {
+                "start_idx": int(sp["start_idx"]),
+                "end_idx": int(sp["end_idx"]),
+                "is_subject": sp.get("kind") == "subject",
+                "is_action": sp.get("kind") == "action",
+                "is_place": sp.get("kind") == "place",
+                "phrase": sp.get("phrase", ""),
+            }
+            for sp in accepted_spans
+        ]
 
         # Fuente alternativa para "Acción" (otra fuente). Intentar Italic del sistema; fallback a Ubuntu bold.
         def _get_action_font(font_scale_local):
@@ -651,21 +741,41 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
 
         action_font = _get_action_font(font_scale)
 
-        def _put_text_with_font_override(img, text_to_draw, position, pil_font, color_bgr):
-            """Dibuja texto con una fuente PIL específica (para la acción)."""
+        shadow_bgr = (35, 35, 35)
+        shadow_offsets = ((2, 2), (1, 2), (2, 1))
+
+        def _put_text_with_font_override(img, text_to_draw, position, pil_font, color_bgr, with_shadow=False):
+            """Dibuja texto con fuente PIL (acción); opcional sombra para legibilidad."""
             try:
                 from PIL import Image, ImageDraw
                 img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
                 draw = ImageDraw.Draw(img_pil)
+                x, y = int(position[0]), int(position[1])
+                if with_shadow:
+                    sh_rgb = (shadow_bgr[2], shadow_bgr[1], shadow_bgr[0])
+                    for dx, dy in shadow_offsets:
+                        draw.text((x + dx, y + dy), text_to_draw, fill=sh_rgb, font=pil_font)
                 color_rgb = (color_bgr[2], color_bgr[1], color_bgr[0])
-                draw.text((position[0], position[1]), text_to_draw, fill=color_rgb, font=pil_font)
+                draw.text((x, y), text_to_draw, fill=color_rgb, font=pil_font)
                 img_result = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
                 img[:] = img_result[:]
             except Exception:
-                put_text_safe_historia(img, text_to_draw, position, font, font_scale, color_bgr, thickness)
+                if with_shadow:
+                    for dx, dy in shadow_offsets:
+                        put_text_safe_historia(
+                            img, text_to_draw, (position[0] + dx, position[1] + dy),
+                            font, font_scale, shadow_bgr, thickness, bold=True,
+                        )
+                put_text_safe_historia(img, text_to_draw, position, font, font_scale, color_bgr, thickness, bold=True)
 
-        # Dibujar texto palabra por palabra con color/fuente según categoría
-        # (sin relieve ni sombras: solo color plano para cada parte de la oración)
+        def _put_word_shadow_then_color(img, text, pos, fg_bgr, bold=True):
+            """Sombreado + texto con Ubuntu (sujeto / lugar)."""
+            x, y = int(pos[0]), int(pos[1])
+            for dx, dy in shadow_offsets:
+                put_text_safe_historia(img, text, (x + dx, y + dy), font, font_scale, shadow_bgr, thickness, bold=bold)
+            put_text_safe_historia(img, text, (x, y), font, font_scale, fg_bgr, thickness, bold=bold)
+
+        # Dibujar texto palabra por palabra: sujeto / acción / lugar con sombra; resto sin sombra
         for idx, wp_data in enumerate(word_positions_data):
             word = wp_data["word"]
 
@@ -677,26 +787,25 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
             y_base = wp_data["y"]
 
             if is_action or is_subject or is_place:
-                # Color de texto según categoría (sin fondo ni sombra)
                 if is_action:
                     fg_color = action_color
                 elif is_subject:
                     fg_color = subject_color
-                else:  # lugar
+                else:
                     fg_color = place_color
 
-                # Dibujar texto principal según categoría (sin relieve)
                 if is_action:
                     if action_font is not None:
-                        _put_text_with_font_override(screen, word, (x_start, y_base), action_font, fg_color)
+                        _put_text_with_font_override(
+                            screen, word, (x_start, y_base), action_font, fg_color, with_shadow=True
+                        )
                     else:
-                        put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
+                        _put_word_shadow_then_color(screen, word, (x_start, y_base), fg_color, bold=True)
                 elif is_subject:
-                    put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
+                    _put_word_shadow_then_color(screen, word, (x_start, y_base), fg_color, bold=True)
                 else:
-                    put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, fg_color, thickness, bold=True)
+                    _put_word_shadow_then_color(screen, word, (x_start, y_base), fg_color, bold=True)
             else:
-                # Resto del texto en blanco plano (sin sombra)
                 put_text_safe_historia(screen, word, (x_start, y_base), font, font_scale, (255, 255, 255), thickness)
 
         # --- Leyenda (sin subrayados): "abc" con color/fuente ---
@@ -719,20 +828,30 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         label_x = legend_x + 60
         y0 = legend_y
 
-        # Sujeto: abc rojo
+        # Leyenda: muestras "abc" con el mismo sombreado que en la oración
+        for dx, dy in shadow_offsets:
+            put_text_safe_historia(
+                screen, sample, (sample_x + dx, y0 + dy), font, legend_font_scale, shadow_bgr, legend_thickness, bold=True
+            )
         put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, subject_color, legend_thickness, bold=True)
         put_text_safe_historia(screen, "Sujeto", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
         y0 += legend_line_height
 
-        # Lugar: abc azul (mismo color que antes se usaba para el predicado)
+        for dx, dy in shadow_offsets:
+            put_text_safe_historia(
+                screen, sample, (sample_x + dx, y0 + dy), font, legend_font_scale, shadow_bgr, legend_thickness, bold=True
+            )
         put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, place_color, legend_thickness, bold=True)
         put_text_safe_historia(screen, "Lugar", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
         y0 += legend_line_height
 
-        # Acción: abc verde con otra fuente
         if action_font is not None:
-            _put_text_with_font_override(screen, sample, (sample_x, y0), action_font, action_color)
+            _put_text_with_font_override(screen, sample, (sample_x, y0), action_font, action_color, with_shadow=True)
         else:
+            for dx, dy in shadow_offsets:
+                put_text_safe_historia(
+                    screen, sample, (sample_x + dx, y0 + dy), font, legend_font_scale, shadow_bgr, legend_thickness, bold=True
+                )
             put_text_safe_historia(screen, sample, (sample_x, y0), font, legend_font_scale, action_color, legend_thickness, bold=True)
         put_text_safe_historia(screen, "Acción", (label_x, y0), font, legend_font_scale, label_color, legend_thickness)
 
@@ -794,7 +913,6 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                 if current_line:
                     put_text_safe_historia(screen, current_line, (tips_x, tips_y), font, tips_font_scale, (255, 255, 255), tips_thickness)
                     tips_y += tips_line_height
-        draw_close_card_final_fn(screen, elevated=elevated_close)
         # Draw confetti if story is correct (will be drawn after this function returns)
 
     # Mostrar la vista de resultados con tips primero
@@ -802,11 +920,12 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
     depth_stream = device.create_depth_stream()
     rgb_stream.start()
     depth_stream.start()
-    result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-    _draw_result_screen(result_screen, elevated_close=False)
-    # Don't draw confetti here - it will be drawn in the final overlay
-    cv2.imshow(window_name, scale_to_videobeam(result_screen))
+    # Pantalla de resultado estática: un solo _draw_result_screen (muy pesado); en animación solo se copia + confetti.
+    result_screen_static = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    _draw_result_screen(result_screen_static)
+    cv2.imshow(window_name, scale_to_videobeam(result_screen_static))
     cv2.waitKey(1)  # Actualizar la ventana inmediatamente para que se muestre rápido
+    result_display_buf = np.empty_like(result_screen_static)
     
     # Leer los tips por voz DESPUÉS de mostrar la pantalla de resultados
     tips = result.get("tips") or []
@@ -832,12 +951,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         tips_thread = threading.Thread(target=_speak_tips, daemon=False)
         tips_thread.start()
     
-    # Esperar a que el TTS termine y luego 2 segundos adicionales antes de mostrar el overlay
-    close_elevated = False
-    frame_count_res = 0
-    touch_history_res = {}
-    touch_history_res = defaultdict(list)
-    
+    # Esperar a que el TTS termine y luego tiempo adicional antes de mostrar el overlay
     # Esperar a que el hilo de TTS termine (si existe) y medir el tiempo que tomó
     tts_start_time = time.time()
     if tips_thread is not None:
@@ -857,56 +971,17 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
     while tips_display_time < tips_display_duration:
         tips_display_time += 0.1
         time.sleep(0.1)
-        
-        frame = rgb_stream.read_frame()
-        depth_frame = depth_stream.read_frame()
-        if frame is None or depth_frame is None:
-            # Redibujar la pantalla de resultados
-            result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-            _draw_result_screen(result_screen, elevated_close=False)
-            if confetti_system is not None:
-                confetti_system.draw(result_screen)
-            cv2.imshow(window_name, scale_to_videobeam(result_screen))
-            cv2.waitKey(1)
-            continue
-        
-        depth_data = np.frombuffer(depth_frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
-        depth_data = cv2.flip(depth_data, 1)
-        depth_roi = depth_data[yw_min:yw_max, xw_min:xw_max]
-        touch_mask = np.logical_and(depth_roi > dmin_map, depth_roi < dmax_map).astype(np.uint8) * 255
-        touch_mask = cv2.medianBlur(touch_mask, 3)
-        kernel = np.ones((2, 2), np.uint8)
-        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_OPEN, kernel)
-        touch_mask = cv2.morphologyEx(touch_mask, cv2.MORPH_CLOSE, kernel)
-        contours, _ = cv2.findContours(touch_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if 100 <= area <= 50000:
-                M = cv2.moments(contour)
-                if M['m00'] != 0:
-                    cx = int(M['m10'] / M['m00'])
-                    cy = int(M['m01'] / M['m00'])
-                    x_touch = int(xv_min + cx * (xv_max - xv_min) / (xw_max - xw_min))
-                    y_touch = int(yv_min + cy * (yv_max - yv_min) / (yw_max - yw_min))
-                    if detectar_close_card_touch_final_fn(x_touch, y_touch):
-                        rgb_stream.stop()
-                        depth_stream.stop()
-                        return "MENU"
-        
-        # Actualizar confetti si está activo (más rápido)
+
         if confetti_system is not None:
-            for _ in range(confetti_speed_mult):
-                confetti_system.update()
-        
-        # Redibujar la pantalla de resultados
-        result_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-        _draw_result_screen(result_screen, elevated_close=False)
-        if confetti_system is not None:
-            confetti_system.draw(result_screen)
-        cv2.imshow(window_name, scale_to_videobeam(result_screen))
-        
+            confetti_system.update(steps=confetti_speed_mult)
+            np.copyto(result_display_buf, result_screen_static)
+            confetti_system.draw(result_display_buf)
+            cv2.imshow(window_name, scale_to_videobeam(result_display_buf))
+        else:
+            cv2.imshow(window_name, scale_to_videobeam(result_screen_static))
+
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        if key == ord("q"):
             rgb_stream.stop()
             depth_stream.stop()
             return None
@@ -1017,12 +1092,10 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         
         return button_salir_bounds, button_reintentar_bounds
     
-    # Mostrar la nueva vista final usando la vista de resultados como base
-    # Crear la vista de resultados final (con historia y consejos)
-    result_screen_final = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-    _draw_result_screen(result_screen_final, elevated_close=False)
-    # Don't draw confetti here - it will be drawn in the final overlay
-    
+    # Mostrar la nueva vista final usando la vista de resultados como base (copia rápida de la estática rasterizada).
+    result_screen_final = np.empty_like(result_screen_static)
+    np.copyto(result_screen_final, result_screen_static)
+
     # Ahora agregar el overlay oscuro con imagen Lingo, texto y botones
     button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_final, elevated_salir=False, elevated_reintentar=False)
     
@@ -1042,17 +1115,13 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
         frame = rgb_stream.read_frame()
         depth_frame = depth_stream.read_frame()
         if frame is None or depth_frame is None:
-            # Recrear la vista de resultados como base
-            result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-            _draw_result_screen(result_screen_base, elevated_close=False)
+            np.copyto(result_display_buf, result_screen_static)
             if confetti_system is not None:
-                for _ in range(confetti_speed_mult):
-                    confetti_system.update()
-            button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
-            # Draw confetti in the final overlay
+                confetti_system.update(steps=confetti_speed_mult)
+            button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_display_buf, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
             if confetti_system is not None:
-                confetti_system.draw(result_screen_base)
-            cv2.imshow(window_name, scale_to_videobeam(result_screen_base))
+                confetti_system.draw(result_display_buf)
+            cv2.imshow(window_name, scale_to_videobeam(result_display_buf))
             cv2.waitKey(1)
             continue
         
@@ -1097,18 +1166,13 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                         else:
                             return "RESTART"  # Volver a la vista final
         
-        # Redibujar la pantalla usando la vista de resultados como base
-        result_screen_base = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-        _draw_result_screen(result_screen_base, elevated_close=False)
-        # Actualizar confetti si está activo (más rápido)
+        np.copyto(result_display_buf, result_screen_static)
         if confetti_system is not None:
-            for _ in range(confetti_speed_mult):
-                confetti_system.update()
-        button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_screen_base, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
-        # Draw confetti in the final overlay (after drawing the overlay)
+            confetti_system.update(steps=confetti_speed_mult)
+        button_salir_bounds, button_reintentar_bounds = _draw_final_screen(result_display_buf, elevated_salir=salir_elevated, elevated_reintentar=reintentar_elevated)
         if confetti_system is not None:
-            confetti_system.draw(result_screen_base)
-        cv2.imshow(window_name, scale_to_videobeam(result_screen_base))
+            confetti_system.draw(result_display_buf)
+        cv2.imshow(window_name, scale_to_videobeam(result_display_buf))
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):

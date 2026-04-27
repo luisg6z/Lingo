@@ -310,7 +310,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
     back_card_center_x_lugares = back_card_margin_x_lugares + back_card_radius_lugares
     back_card_center_y_lugares = back_card_margin_y_lugares + back_card_radius_lugares
     
-    # Crear un área rectangular de detección (más grande que el círculo para facilitar el toque)
+    # Usar exactamente la misma lógica de detección que en selección de acciones
     back_card_detection_size_lugares = back_card_radius_lugares * 2.4
     back_card_detection_x_lugares = back_card_center_x_lugares - back_card_radius_lugares * 1.2
     back_card_detection_y_lugares = back_card_center_y_lugares - back_card_radius_lugares * 1.2
@@ -344,13 +344,14 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                 close_card_detection_y_lugares <= y_touch <= close_card_detection_y_lugares + close_card_detection_h_lugares)
     
     # Definir los 6 lugares
+    # (Casa, Clinica, Escuela, Estacion-policia, Parque, Cocina)
     lugares = [
-        {"nombre": "Calle", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Calle.png"},
+        {"nombre": "Casa", "color": (255, 150, 200), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
         {"nombre": "Clinica", "color": (200, 150, 255), "imagen": "src/features/juego-historia/assets/images/Clinica.png"},
-        {"nombre": "Estacion-Policia", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
-        {"nombre": "Escuela", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
-        {"nombre": "Casa", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Casa.png"},
-        {"nombre": "Parque", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Parque.png"}
+        {"nombre": "Escuela", "color": (150, 255, 200), "imagen": "src/features/juego-historia/assets/images/Escuela.png"},
+        {"nombre": "Estacion-policia", "color": (255, 200, 150), "imagen": "src/features/juego-historia/assets/images/Estacion-Policia.png"},
+        {"nombre": "Parque", "color": (200, 255, 150), "imagen": "src/features/juego-historia/assets/images/Parque.png"},
+        {"nombre": "Cocina", "color": (150, 200, 255), "imagen": "src/features/juego-historia/assets/images/Cocina.png"}
     ]
     
     # Cargar imágenes de los lugares si existen
@@ -780,7 +781,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
             # Verificar si se tocó el botón de retroceso (flecha)
             if detectar_back_card_touch_lugares(x_touch, y_touch):
                 print("Card de retroceso tocada en selección de lugares")
-                # Mostrar efecto de elevación en la flecha
+                # Mostrar efecto de elevación en la flecha y volver a la vista de acciones
                 temp_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
                 for y in range(view_height):
                     ratio = y / view_height
@@ -788,7 +789,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                     g = int(200 * (0.5 + 0.3 * ratio))
                     b = int(255 * (0.8 - 0.3 * ratio))
                     temp_screen[y, :] = [b, g, r]
-                draw_logo_func(temp_screen)
+                draw_logo_smaller_lugares(temp_screen)
                 draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
                 draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
                 draw_back_card_lugares(temp_screen, elevated=True)
@@ -814,7 +815,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                     g = int(200 * (0.5 + 0.3 * ratio))
                     b = int(255 * (0.8 - 0.3 * ratio))
                     temp_screen[y, :] = [b, g, r]
-                draw_logo_func(temp_screen)
+                draw_logo_smaller_lugares(temp_screen)
                 draw_lugar_cards(temp_screen, lugar_positions, selected_cards=lugares_seleccionados)
                 draw_lugares_seleccionados(temp_screen, len(lugares_seleccionados))
                 draw_back_card_lugares(temp_screen, elevated=False)
@@ -828,12 +829,6 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                 rgb_stream.stop()
                 depth_stream.stop()
                 return "MENU"
-            
-            # Verificar si se está tocando el botón de retroceso
-            if detectar_back_card_touch_lugares(x_touch, y_touch):
-                back_elevated_lugares = True
-            else:
-                back_elevated_lugares = False
             
             # Verificar si se está tocando el botón "Jugar"
             if detectar_jugar_button_touch(x_touch, y_touch):
@@ -850,7 +845,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                     jugar_press_frames = 0
                     print("Botón Jugar bloqueado - selecciona al menos un lugar")
             else:
-                # Si no se está tocando el botón, resetear estado
+                # Si no se está tocando el botón Jugar, resetear estado
                 if jugar_pressed:
                     jugar_pressed = False
                     jugar_press_frames = 0
@@ -866,7 +861,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
                         break
                 
                 if lugar_seleccionado_temp:
-                    # Toggle de selección: si ya está seleccionado, deseleccionarlo; si no, seleccionarlo
+                    # Toggle de selección de lugar (igual que otras vistas)
                     if lugar_seleccionado_temp in lugares_seleccionados:
                         lugares_seleccionados.remove(lugar_seleccionado_temp)
                         print(f"Lugar deseleccionado: {lugar_seleccionado_temp}")

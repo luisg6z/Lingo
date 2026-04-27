@@ -15,7 +15,7 @@ import sys
 # Get project root (3 levels up from this file: src/features/menu -> src -> project root)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, project_root)
-from src.core.calibration import load_and_validate_dmax_map
+from src.core.calibration import load_touch_depth_maps, map_depth_roi_to_viewport
 from src.core.ui_utils import scale_to_videobeam, draw_logo
 from src.components import draw_rectangular_button
 
@@ -80,15 +80,10 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
     yv_min = coordenadas["yv_min"]
     yv_max = coordenadas["yv_max"]
 
-    # Cargar y validar dmax_map (opcional - solo necesario para detección de toques)
-    dmax_map, w, h = load_and_validate_dmax_map(coordenadas)
+    # Cargar dmax/dmin para detección de toques (banda según perfil menú + JSON opcional)
+    dmax_map, dmin_map = load_touch_depth_maps(coordenadas, band_profile="menu")
     dmax_map_available = dmax_map is not None
-    
-    if dmax_map_available:
-        # Ajustar el dmax_map (restar offset)
-        dmax_map = dmax_map - 5
-        dmin_map = dmax_map - 7
-    else:
+    if not dmax_map_available:
         print("\n[ADVERTENCIA] No se pudo cargar dmax_map. El menú se mostrará pero la detección de toques no funcionará.")
         print("Ejecuta 'python src/core/calibrate_area.py' o 'python calibrate_area_mejorado.py' para calibrar.\n")
         dmax_map = None
@@ -645,10 +640,10 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                     if M['m00'] != 0:
                         cx = int(M['m10'] / M['m00'])
                         cy = int(M['m01'] / M['m00'])
-                        
-                        # Mapeo de coordenadas de ventana a viewport
-                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+
+                        x_touch, y_touch = map_depth_roi_to_viewport(
+                            cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                        )
                         
                         # Agregar a historial (usar coordenadas discretizadas para agrupar toques cercanos)
                         touch_key = (x_touch // 25, y_touch // 25)  # Agrupar toques dentro de 25 píxeles
@@ -817,10 +812,15 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                             break
                         # Si es Absurdos Logicos, ir directamente al juego de absurdos visuales
                         elif juego_seleccionado == "Absurdos Logicos":
-                            # Ir directamente al juego de absurdos visuales (sin vista intermedia)
-                            juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, sentence_transformer_model)
-                            # El juego retornó, volver al menú principal
-                            # Recrear el menú
+                            # Reutilizar la misma ventana del menú en el videobeam (como en Historias).
+                            # Así al dar X el juego no cierra la ventana y aquí la actualizamos con el menú.
+                            juego_absurdos_reconocimiento_voz(
+                                device, coordenadas, dmax_map, dmin_map, sentence_transformer_model,
+                                existing_window_name="Menú de Juegos"
+                            )
+                            
+                            # El juego retornó, volver al menú principal SOLO aquí (cuando el juego termina).
+                            # Recrear el menú desde cero.
                             videobeam_screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
                             for y in range(view_height):
                                 ratio = y / view_height
@@ -1263,11 +1263,11 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                     M = cv2.moments(contour)
                     if M["m00"] != 0:
                         cx = int(M["m10"] / M["m00"])
-                        cy = int(M["m01"] / M["m00"]) + yw_min
+                        cy = int(M["m01"] / M["m00"])
 
-                        # Mapeo de coordenadas de ventana a viewport
-                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                        x_touch, y_touch = map_depth_roi_to_viewport(
+                            cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                        )
 
                         # Detectar si se seleccionó una opción
                         opcion_seleccionada = detectar_opcion_seleccionada(x_touch, y_touch, areas_opciones)

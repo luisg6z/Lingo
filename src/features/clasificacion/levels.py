@@ -21,7 +21,8 @@ from src.features.confetti import ConfettiSystem
 # Import button components
 from src.components import draw_rectangular_button, is_point_in_rectangular_button
 # Import Ubuntu font utility
-from src.core.font_utils import put_text_ubuntu
+from src.core.font_utils import put_text_ubuntu, get_ubuntu_font
+from src.core.calibration import map_depth_roi_to_viewport
 
 
 # Variable global para mantener el estado del audio entre vistas
@@ -1589,6 +1590,19 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
         print(f"⚠ No se encontró el archivo de traducciones: {translation_file}")
         translations = {"labels": {}, "escenarios": {}}
     
+    def etiqueta_objeto_es(label_en):
+        """Nombre del objeto en español usando label_translations.json (con coincidencia sin mayúsculas)."""
+        m = translations.get("labels") or {}
+        if not label_en:
+            return label_en or ""
+        if label_en in m:
+            return m[label_en]
+        lo = label_en.lower()
+        for k, v in m.items():
+            if str(k).lower() == lo:
+                return v
+        return label_en
+    
     # Diccionario de artículos para cada pieza (basado en el label en inglés)
     articulos_piezas = {
         # Animales - Escenario 1
@@ -1711,9 +1725,11 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     sonido_reproducido = False
     
     # Initialize confetti system
-    confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+    confetti_system = ConfettiSystem(view_width, view_height, num_particles=120)
     confetti_started = False
-    
+    exito_overlay_static = None
+    exito_overlay_work = None
+
     # Cargar imágenes de los escenarios seleccionados
     loaded_escenario_images = {}
     for escenario in escenarios_seleccionados:
@@ -2261,6 +2277,25 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     max_history_size = 5  # Número de detecciones a considerar para estabilización (reducido para respuesta más rápida)
     confidence_threshold = 0.6  # Umbral mínimo de confianza para mostrar el nombre
     
+    try:
+        from PIL import Image as _pil_label_canvas, ImageDraw as _pil_label_drawmod
+        _clasif_label_font = get_ubuntu_font(font_scale=0.62, bold=True)
+        _pil_label_measure = _pil_label_canvas.new("RGB", (768, 96), (0, 0, 0))
+        _pil_label_draw = _pil_label_drawmod.Draw(_pil_label_measure)
+    except Exception:
+        _clasif_label_font = None
+        _pil_label_draw = None
+    
+    def _medir_texto_etiqueta_objeto(s):
+        if _clasif_label_font is not None and _pil_label_draw is not None:
+            try:
+                bb = _pil_label_draw.textbbox((0, 0), s, font=_clasif_label_font)
+                return bb[2] - bb[0], bb[3] - bb[1]
+            except Exception:
+                pass
+        (tw, th), bl = cv2.getTextSize(s, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        return tw, th + bl
+    
     # Sistema de seguimiento de objetos para reproducir sonido de incorrecto
     # Rastrea qué objetos estaban presentes en el frame anterior
     # Clave: label - Valor: (cx_proj, cy_proj, escenario_anterior, presente)
@@ -2285,6 +2320,10 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
     # Sistema de seguimiento de objetos incorrectos que ya fueron anunciados
     # Clave: (label, escenario) - Valor: True si ya se anunció que este objeto no pertenece a este escenario
     objetos_incorrectos_anunciados = set()  # Set de tuplas (label, escenario) que ya recibieron anuncio TTS de incorrecto
+    
+    # Cinco piezas correctas de forma continua antes del TTS "Está correcto..." (evita anunciar en un frame suelto)
+    escenario_cinco_estable_desde = {}  # {escenario: timestamp inicio}
+    UMBRAL_5_PIEZAS_ESTABLES_SEG = 3.0
     
     # Sistema de seguimiento de objetos temporalmente perdidos (ocultos por mano u otro objeto)
     # Clave: label - Valor: (timestamp_desaparicion, escenario_anterior, cx_prev, cy_prev)
@@ -2365,9 +2404,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                             cx = int(M['m10'] / M['m00'])
                             cy = int(M['m01'] / M['m00'])
                             
-                            # Mapeo de coordenadas
-                            x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                            y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                            x_touch, y_touch = map_depth_roi_to_viewport(
+                                cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                            )
                             
                             # Verificar toques en los botones
                             if imagen_exito is not None:
@@ -2449,9 +2488,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         cx = int(M['m10'] / M['m00'])
                         cy = int(M['m01'] / M['m00'])
                         
-                        # Mapeo de coordenadas
-                        x_touch = int(xv_min + (cx) * (xv_max - xv_min) / (xw_max - xw_min))
-                        y_touch = int(yv_min + (cy) * (yv_max - yv_min) / (yw_max - yw_min))
+                        x_touch, y_touch = map_depth_roi_to_viewport(
+                            cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                        )
                         
                         # Primero verificar si se tocó la card de cerrar (X) - lleva al menú principal
                         if detectar_close_card_touch_rect(x_touch, y_touch):
@@ -2676,15 +2715,13 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                 merged_detections = []
                 labels_presentes = set()
             
-            # Dibujar efectos de brillo para objetos detectados
-            # Calcular relación píxeles/cm (basado en view_width=1280 y ancho físico=192cm)
+            # Cuadro de detección (brillo) + palabra en español sobre cada objeto
             ancho_fisico_cm = 192
-            pixels_per_cm = view_width / ancho_fisico_cm  # ≈ 6.67 píxeles/cm
-            aumento_cm = 2  # Agregar 2 cm más al tamaño del cuadro
-            aumento_px = int(aumento_cm * pixels_per_cm)  # ≈ 13 píxeles
-            green_color = (0, 255, 0)  # Verde en BGR para escenario correcto
-            red_color = (0, 0, 255)  # Rojo en BGR para escenario incorrecto
-            
+            pixels_per_cm = view_width / ancho_fisico_cm
+            aumento_cm = 2
+            aumento_px = int(aumento_cm * pixels_per_cm)
+            green_color = (0, 255, 0)
+            red_color = (0, 0, 255)
             # Solo procesar detecciones si el juego no está completo
             if not juego_completo:
                 for det in merged_detections:
@@ -2706,13 +2743,9 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                     cx_proj = (x1_proj + x2_proj) / 2
                     cy_proj = (y1_proj + y2_proj) / 2
                     
-                    # Calcular el tamaño del bounding box en proyección
                     bbox_width_proj = abs(x2_proj - x1_proj)
                     bbox_height_proj = abs(y2_proj - y1_proj)
-                    
-                    # Usar el tamaño real del bounding box y agregar 2 cm más
-                    # Asegurar un tamaño mínimo razonable
-                    min_size_px = int(5 * pixels_per_cm)  # Mínimo 5 cm
+                    min_size_px = int(5 * pixels_per_cm)
                     box_width = max(bbox_width_proj + aumento_px, min_size_px)
                     box_height = max(bbox_height_proj + aumento_px, min_size_px)
                     
@@ -2724,7 +2757,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                             escenario_actual = escenario
                             break
                     
-                    # Si no está en ningún escenario, no dibujar cuadro
+                    # Si no está en ningún escenario, no dibujar etiqueta
                     if escenario_actual is None:
                         continue
                     
@@ -2763,17 +2796,13 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         # Remover de objetos temporalmente perdidos ya que reapareció
                         del objetos_temporalmente_perdidos[stable_label]
                     
-                    # Determinar el color del cuadro
-                    box_color = green_color  # Por defecto verde
-                    
-                    # Verificar si el objeto está en el escenario correcto
+                    # Color del cuadro de detección según escenario
+                    box_color = green_color
                     es_correcto = False
                     if categoria_objetivo is not None and categoria_objetivo == escenario_actual:
-                        # Está en el escenario correcto: verde
                         box_color = green_color
                         es_correcto = True
                     else:
-                        # Está en un escenario incorrecto (o no tiene categoría válida): rojo
                         box_color = red_color
                         es_correcto = False
                     
@@ -2839,6 +2868,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Esto evita que se repita el anuncio cuando una pieza se mueve temporalmente
                                 if len(piezas_correctas_por_escenario[escenario]) < 5:
                                     escenarios_anunciados_completos.discard(escenario)
+                                    escenario_cinco_estable_desde.pop(escenario, None)
                         
                         # Remover del conjunto de objetos anunciados si estaba en posición correcta antes
                         if stable_label in objetos_anunciados:
@@ -2874,6 +2904,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                     # Esto evita que se repita el anuncio cuando una pieza se mueve temporalmente
                                     if len(piezas_correctas_por_escenario[escenario]) < 5:
                                         escenarios_anunciados_completos.discard(escenario)
+                                        escenario_cinco_estable_desde.pop(escenario, None)
                             
                             # Verificar si es la primera vez que este objeto está en la posición correcta
                             # Solo anunciar si no estaba en posición correcta antes o es un objeto nuevo
@@ -2897,47 +2928,6 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Solo agregar si no estaba ya en este escenario
                                 if stable_label not in piezas_correctas_por_escenario[escenario_actual]:
                                     piezas_correctas_por_escenario[escenario_actual].add(stable_label)
-                                    
-                                    # Verificar si el escenario alcanzó exactamente 5 piezas correctas
-                                    piezas_ahora = len(piezas_correctas_por_escenario[escenario_actual])
-                                    
-                                    # Si alcanzó 5 piezas y no se ha anunciado antes para este escenario
-                                    if piezas_ahora == 5 and escenario_actual not in escenarios_anunciados_completos:
-                                        # Obtener todas las piezas del escenario
-                                        piezas_escenario = piezas_correctas_por_escenario[escenario_actual]
-                                        
-                                        # Obtener traducciones
-                                        escenario_es = translations.get("escenarios", {}).get(escenario_actual, escenario_actual)
-                                        
-                                        # Obtener el artículo del escenario
-                                        articulo_escenario = obtener_articulo_escenario(escenario_es)
-                                        
-                                        # Construir lista de nombres de piezas en español con artículos
-                                        nombres_piezas = []
-                                        for pieza_label in piezas_escenario:
-                                            pieza_es = translations.get("labels", {}).get(pieza_label, pieza_label)
-                                            articulo = obtener_articulo(pieza_label)
-                                            # Agregar artículo + nombre: "el gato", "la manzana", etc.
-                                            nombres_piezas.append(f"{articulo} {pieza_es}")
-                                        
-                                        # Construir mensaje TTS: "Está correcto. [artículo pieza1], [artículo pieza2], [artículo pieza3], [artículo pieza4] y [artículo pieza5] pertenecen a [artículo] [escenario]"
-                                        mensaje = "Está correcto. "
-                                        if len(nombres_piezas) > 0:
-                                            # Unir todas las piezas con comas, excepto la última que lleva "y"
-                                            if len(nombres_piezas) == 1:
-                                                mensaje += nombres_piezas[0]
-                                            elif len(nombres_piezas) == 2:
-                                                mensaje += f"{nombres_piezas[0]} y {nombres_piezas[1]}"
-                                            else:
-                                                # Para 3 o más: "el gato, la vaca, el perro, la gallina y el caballo"
-                                                mensaje += ", ".join(nombres_piezas[:-1])
-                                                mensaje += f" y {nombres_piezas[-1]}"
-                                        
-                                        mensaje += f" pertenecen a {articulo_escenario} {escenario_es}"
-                                        
-                                        reproducir_texto_tts(mensaje)
-                                        escenarios_anunciados_completos.add(escenario_actual)
-                                        print(f"TTS anunciado (escenario completo): {mensaje}")
                             
                             # Marcar el objeto como anunciado (aunque no anunciemos individualmente)
                             if debe_anunciar:
@@ -2951,20 +2941,31 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         objetos_incorrectos_anunciados = {(label, esc) for (label, esc) in objetos_incorrectos_anunciados 
                                                           if label != stable_label}
                     
-                    # Dibujar efecto de brillo centrado en el centro calculado de las esquinas mapeadas
                     box_x = int(cx_proj - box_width / 2)
                     box_y = int(cy_proj - box_height / 2)
                     box_w = int(box_width)
                     box_h = int(box_height)
                     draw_shine_effect(rectangulos_screen, box_x, box_y, box_w, box_h, color=box_color)
                     
-                    # Mostrar el nombre del objeto detectado (solo si la confianza es alta)
-                    if confidence >= confidence_threshold:
-                        text_x = int(cx_proj - box_width / 4)
-                        text_y = int(cy_proj - box_height / 2 - 10)
-                        # Usar color negro para el texto (mejor visibilidad)
-                        cv2.putText(rectangulos_screen, stable_label, (text_x, text_y), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                    # Palabra del objeto en español cerca de la figura (verde/rojo según escenario)
+                    label_es = etiqueta_objeto_es(stable_label)
+                    font_scale_lbl = 0.62
+                    thickness_lbl = 2
+                    tw, th = _medir_texto_etiqueta_objeto(label_es)
+                    y_top = int(min(y1_proj, y2_proj))
+                    y_bot = int(max(y1_proj, y2_proj))
+                    margin = 10
+                    text_y = y_top - margin
+                    min_y_visible = max(int(yv_min) + 6, int(text_y_titulo) + 48)
+                    if text_y < min_y_visible:
+                        text_y = y_bot + th + margin
+                    text_x = int(cx_proj - tw // 2)
+                    text_x = max(int(xv_min) + 4, min(text_x, int(xv_max) - tw - 4))
+                    text_color = (0, 255, 0) if es_correcto else (0, 0, 255)
+                    put_text_ubuntu(rectangulos_screen, label_es, (text_x + 2, text_y + 2),
+                                    font_scale_lbl, (0, 0, 0), thickness_lbl + 1, bold=True)
+                    put_text_ubuntu(rectangulos_screen, label_es, (text_x, text_y),
+                                    font_scale_lbl, text_color, thickness_lbl, bold=True)
             
             # Marcar como no presentes los objetos que estaban en el frame anterior pero no en el actual
             current_time = time.time()
@@ -2993,9 +2994,8 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                                 # Remover de las piezas correctas si estaba registrada
                                 if escenario_prev in piezas_correctas_por_escenario:
                                     piezas_correctas_por_escenario[escenario_prev].discard(label)
-                                    # Solo remover de escenarios_anunciados_completos si el escenario realmente tiene menos de 5 piezas
-                                    if len(piezas_correctas_por_escenario[escenario_prev]) < 5:
-                                        escenarios_anunciados_completos.discard(escenario_prev)
+                                    # No quitar escenarios_anunciados_completos aquí: la pérdida es por oclusión
+                                    # temporal; el TTS del escenario completo no debe repetirse al reaparecer la figura.
                                 
                                 # Limpiar temporizador de incorrecto y anuncios
                                 if label in objeto_incorrecto_tiempo:
@@ -3043,8 +3043,7 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         # Remover de las piezas correctas si estaba registrada
                         if escenario_perdido in piezas_correctas_por_escenario:
                             piezas_correctas_por_escenario[escenario_perdido].discard(label)
-                            if len(piezas_correctas_por_escenario[escenario_perdido]) < 5:
-                                escenarios_anunciados_completos.discard(escenario_perdido)
+                            # Igual que arriba: no invalidar el anuncio por oclusión prolongada
                         
                         # Limpiar temporizador de incorrecto y anuncios
                         if label in objeto_incorrecto_tiempo:
@@ -3069,6 +3068,48 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
                         del objetos_temporalmente_perdidos[label]
                         if label in objeto_posicion_anterior:
                             del objeto_posicion_anterior[label]
+            
+            # TTS del escenario completo: exige 5 piezas correctas de forma continua (espera UMBRAL_5_PIEZAS_ESTABLES_SEG)
+            if not juego_completo:
+                ahora_esc = time.time()
+                for escenario_chk in escenarios_seleccionados:
+                    if escenario_chk in escenarios_anunciados_completos:
+                        continue
+                    n_ok = len(piezas_correctas_por_escenario.get(escenario_chk, set()))
+                    if n_ok == 5:
+                        if escenario_chk not in escenario_cinco_estable_desde:
+                            escenario_cinco_estable_desde[escenario_chk] = ahora_esc
+                        elif ahora_esc - escenario_cinco_estable_desde[escenario_chk] >= UMBRAL_5_PIEZAS_ESTABLES_SEG:
+                            piezas_escenario = piezas_correctas_por_escenario[escenario_chk]
+                            escenario_es = translations.get("escenarios", {}).get(escenario_chk, escenario_chk)
+                            articulo_escenario = obtener_articulo_escenario(escenario_es)
+                            piezas_ordenadas = sorted(
+                                piezas_escenario,
+                                key=lambda pl: translations.get("labels", {}).get(pl, pl).lower(),
+                            )
+                            nombres_piezas = []
+                            for pieza_label in piezas_ordenadas:
+                                pieza_es = translations.get("labels", {}).get(pieza_label, pieza_label)
+                                articulo = obtener_articulo(pieza_label)
+                                nombres_piezas.append(f"{articulo} {pieza_es}")
+                            mensaje = "Está correcto. "
+                            if len(nombres_piezas) > 0:
+                                if len(nombres_piezas) == 1:
+                                    mensaje += nombres_piezas[0]
+                                elif len(nombres_piezas) == 2:
+                                    mensaje += f"{nombres_piezas[0]} y {nombres_piezas[1]}"
+                                else:
+                                    mensaje += ", ".join(nombres_piezas[:-1])
+                                    mensaje += f" y {nombres_piezas[-1]}"
+                            mensaje += f" pertenecen a {articulo_escenario} {escenario_es}"
+                            reproducir_texto_tts(mensaje)
+                            escenarios_anunciados_completos.add(escenario_chk)
+                            escenario_cinco_estable_desde.pop(escenario_chk, None)
+                            print(
+                                f"TTS anunciado (escenario completo, tras {UMBRAL_5_PIEZAS_ESTABLES_SEG}s con 5 piezas): {mensaje}"
+                            )
+                    else:
+                        escenario_cinco_estable_desde.pop(escenario_chk, None)
             
             # Verificar si todos los escenarios tienen 5 piezas correctas y están completos (solo si el juego no está completo)
             if not juego_completo:
@@ -3101,148 +3142,124 @@ def mostrar_vista_rectangulos_escenarios(device, coordenadas, dmax_map, dmin_map
             
             # Si el juego está completo, mostrar pantalla de éxito con botones
             if juego_completo and imagen_exito is not None:
-                # Update confetti system
                 confetti_system.update()
-                
-                # Crear overlay negro con opacidad 50%
-                overlay_negro = np.zeros_like(rectangulos_screen)
-                overlay = cv2.addWeighted(rectangulos_screen, 0.5, overlay_negro, 0.5, 0)
-                
-                # Escalar la imagen para hacerla más grande (1.8x el tamaño original)
-                scale_factor = 1.8
-                img_h_original, img_w_original = imagen_exito.shape[:2]
-                img_w = int(img_w_original * scale_factor)
-                img_h = int(img_h_original * scale_factor)
-                
-                # Escalar la imagen
-                if len(imagen_exito.shape) == 3 and imagen_exito.shape[2] == 4:
-                    # Imagen con canal alpha
-                    imagen_escalada = cv2.resize(imagen_exito, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
-                else:
-                    # Imagen sin alpha
-                    imagen_escalada = cv2.resize(imagen_exito, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
-                
-                # Calcular posición centrada
-                center_x = view_width // 2
-                center_y = view_height // 2
-                x1 = center_x - img_w // 2
-                y1 = center_y - img_h // 2
-                x2 = x1 + img_w
-                y2 = y1 + img_h
-                
-                # Asegurar que la imagen quepa en la pantalla (ajustar si es necesario)
-                if x1 < 0:
-                    x1 = 0
-                if y1 < 0:
-                    y1 = 0
-                if x2 > view_width:
-                    x2 = view_width
-                if y2 > view_height:
-                    y2 = view_height
-                
-                # Calcular el área de la imagen a usar
-                img_x1 = max(0, -x1)
-                img_y1 = max(0, -y1)
-                img_x2 = img_w - max(0, x2 - view_width)
-                img_y2 = img_h - max(0, y2 - view_height)
-                
-                # Si la imagen tiene canal alpha, usar composición con alpha
-                if len(imagen_escalada.shape) == 3 and imagen_escalada.shape[2] == 4:
-                    # Extraer RGB y alpha
-                    img_rgb = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
-                    img_alpha = imagen_escalada[img_y1:img_y2, img_x1:img_x2, 3:4] / 255.0
-                    alpha_3ch = np.repeat(img_alpha, 3, axis=2)
-                    
-                    # Componer la imagen con alpha sobre el overlay
-                    overlay[y1:y2, x1:x2] = (overlay[y1:y2, x1:x2] * (1 - alpha_3ch) + 
-                                              img_rgb * alpha_3ch).astype(np.uint8)
-                else:
-                    # Si no tiene alpha, copiar directamente
-                    overlay[y1:y2, x1:x2] = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
-                
-                # Dibujar texto "¡Muy Bien!" debajo de la imagen (mismo estilo que historias)
-                message_text = "¡Muy Bien!"
-                message_font_scale = 1.5
-                message_thickness = 3
-                message_color = (0, 255, 0)  # Verde como en historias
-                message_y = y2 + 40  # 40 píxeles abajo de la imagen
-                
-                # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
-                try:
-                    from PIL import Image, ImageDraw
-                    from src.core.font_utils import get_ubuntu_font
-                    font_ubuntu = get_ubuntu_font(font_scale=message_font_scale, bold=True)
-                    img_pil = Image.fromarray(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
-                    draw = ImageDraw.Draw(img_pil)
+
+                if exito_overlay_static is None:
+                    overlay_negro = np.zeros_like(rectangulos_screen)
+                    overlay = cv2.addWeighted(rectangulos_screen, 0.5, overlay_negro, 0.5, 0)
+
+                    scale_factor = 1.8
+                    img_h_original, img_w_original = imagen_exito.shape[:2]
+                    img_w = int(img_w_original * scale_factor)
+                    img_h = int(img_h_original * scale_factor)
+
+                    if len(imagen_exito.shape) == 3 and imagen_exito.shape[2] == 4:
+                        imagen_escalada = cv2.resize(imagen_exito, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
+                    else:
+                        imagen_escalada = cv2.resize(imagen_exito, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
+
+                    center_x = view_width // 2
+                    center_y = view_height // 2
+                    x1 = center_x - img_w // 2
+                    y1 = center_y - img_h // 2
+                    x2 = x1 + img_w
+                    y2 = y1 + img_h
+
+                    if x1 < 0:
+                        x1 = 0
+                    if y1 < 0:
+                        y1 = 0
+                    if x2 > view_width:
+                        x2 = view_width
+                    if y2 > view_height:
+                        y2 = view_height
+
+                    img_x1 = max(0, -x1)
+                    img_y1 = max(0, -y1)
+                    img_x2 = img_w - max(0, x2 - view_width)
+                    img_y2 = img_h - max(0, y2 - view_height)
+
+                    if len(imagen_escalada.shape) == 3 and imagen_escalada.shape[2] == 4:
+                        img_rgb = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
+                        img_alpha = imagen_escalada[img_y1:img_y2, img_x1:img_x2, 3:4] / 255.0
+                        alpha_3ch = np.repeat(img_alpha, 3, axis=2)
+                        overlay[y1:y2, x1:x2] = (overlay[y1:y2, x1:x2] * (1 - alpha_3ch) +
+                                                 img_rgb * alpha_3ch).astype(np.uint8)
+                    else:
+                        overlay[y1:y2, x1:x2] = imagen_escalada[img_y1:img_y2, img_x1:img_x2, :3]
+
+                    message_text = "¡Muy Bien!"
+                    message_font_scale = 1.5
+                    message_thickness = 3
+                    message_color = (0, 255, 0)
+                    message_y = y2 + 40
+
                     try:
-                        bbox = draw.textbbox((0, 0), message_text, font=font_ubuntu)
-                        message_width = bbox[2] - bbox[0]
-                    except AttributeError:
-                        bbox = font_ubuntu.getbbox(message_text) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
-                        message_width = bbox[2] - bbox[0]
-                except:
-                    message_size, _ = cv2.getTextSize(message_text, cv2.FONT_HERSHEY_DUPLEX, message_font_scale, message_thickness)
-                    message_width = message_size[0]
-                
-                # Centrar texto horizontalmente
-                message_x = (view_width - message_width) // 2
-                
-                # Dibujar texto con sombra (mismo estilo que historias)
-                put_text_ubuntu(overlay, message_text, (message_x + 2, message_y + 2),
-                              message_font_scale, (0, 0, 0), message_thickness + 1, bold=True)  # Sombra negra
-                put_text_ubuntu(overlay, message_text, (message_x, message_y),
-                              message_font_scale, message_color, message_thickness, bold=True)  # Texto verde
-                
-                # Dibujar botones arriba de la imagen
-                button_height = 80
-                button_width = 200
-                button_spacing = 50
-                button_y = y1 - button_height - 40  # 40 píxeles arriba de la imagen
-                
-                # Botón "Volver a jugar" (izquierda)
-                button_volver_x1 = center_x - button_width - button_spacing // 2
-                button_volver_y1 = button_y
-                button_volver_x2 = button_volver_x1 + button_width
-                button_volver_y2 = button_volver_y1 + button_height
-                
-                # Botón "Salir" (derecha)
-                button_salir_x1 = center_x + button_spacing // 2
-                button_salir_y1 = button_y
-                button_salir_x2 = button_salir_x1 + button_width
-                button_salir_y2 = button_salir_y1 + button_height
-                
-                # Dibujar botón "Volver a jugar" (verde) usando componente
-                volver_button_bounds = draw_rectangular_button(
-                    overlay,
-                    button_volver_x1, button_volver_y1, button_width, button_height,
-                    "Volver a jugar",
-                    bg_color=(0, 200, 0),  # Green
-                    border_color=(255, 255, 255),
-                    border_thickness=3,
-                    text_color=(255, 255, 255),
-                    font_scale=1.0,
-                    bold=True,
-                    shadow=False
-                )
-                
-                # Dibujar botón "Salir" (rojo) usando componente
-                salir_button_bounds = draw_rectangular_button(
-                    overlay,
-                    button_salir_x1, button_salir_y1, button_width, button_height,
-                    "Salir",
-                    bg_color=(0, 0, 200),  # Red
-                    border_color=(255, 255, 255),
-                    border_thickness=3,
-                    text_color=(255, 255, 255),
-                    font_scale=1.0,
-                    bold=True,
-                    shadow=False
-                )
-                
-                # Draw confetti on overlay
-                confetti_system.draw(overlay)
-                
-                rectangulos_screen = overlay
+                        from PIL import Image, ImageDraw
+                        from src.core.font_utils import get_ubuntu_font
+                        font_ubuntu = get_ubuntu_font(font_scale=message_font_scale, bold=True)
+                        img_pil = Image.fromarray(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
+                        draw = ImageDraw.Draw(img_pil)
+                        try:
+                            bbox = draw.textbbox((0, 0), message_text, font=font_ubuntu)
+                            message_width = bbox[2] - bbox[0]
+                        except AttributeError:
+                            bbox = font_ubuntu.getbbox(message_text) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+                            message_width = bbox[2] - bbox[0]
+                    except Exception:
+                        message_size, _ = cv2.getTextSize(message_text, cv2.FONT_HERSHEY_DUPLEX, message_font_scale, message_thickness)
+                        message_width = message_size[0]
+
+                    message_x = (view_width - message_width) // 2
+
+                    put_text_ubuntu(overlay, message_text, (message_x + 2, message_y + 2),
+                                    message_font_scale, (0, 0, 0), message_thickness + 1, bold=True)
+                    put_text_ubuntu(overlay, message_text, (message_x, message_y),
+                                    message_font_scale, message_color, message_thickness, bold=True)
+
+                    button_height = 80
+                    button_width = 200
+                    button_spacing = 50
+                    button_y = y1 - button_height - 40
+
+                    button_volver_x1 = center_x - button_width - button_spacing // 2
+                    button_volver_y1 = button_y
+
+                    button_salir_x1 = center_x + button_spacing // 2
+                    button_salir_y1 = button_y
+
+                    draw_rectangular_button(
+                        overlay,
+                        button_volver_x1, button_volver_y1, button_width, button_height,
+                        "Volver a jugar",
+                        bg_color=(0, 200, 0),
+                        border_color=(255, 255, 255),
+                        border_thickness=3,
+                        text_color=(255, 255, 255),
+                        font_scale=1.0,
+                        bold=True,
+                        shadow=False
+                    )
+
+                    draw_rectangular_button(
+                        overlay,
+                        button_salir_x1, button_salir_y1, button_width, button_height,
+                        "Salir",
+                        bg_color=(0, 0, 200),
+                        border_color=(255, 255, 255),
+                        border_thickness=3,
+                        text_color=(255, 255, 255),
+                        font_scale=1.0,
+                        bold=True,
+                        shadow=False
+                    )
+
+                    exito_overlay_static = overlay.copy()
+                    exito_overlay_work = np.empty_like(exito_overlay_static)
+
+                np.copyto(exito_overlay_work, exito_overlay_static)
+                confetti_system.draw(exito_overlay_work)
+                rectangulos_screen = exito_overlay_work
             
             # Escalar a la resolución del videobeam antes de mostrar
             rectangulos_screen_scaled = scale_to_videobeam(rectangulos_screen)

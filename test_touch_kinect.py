@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Test script to visualize Kinect touch detection with exact coordinates.
-Uses the same calibration as the main app (config/ultima_configuracion_coordenadas.json + dmax_map.txt).
+Uses the same calibration as the main app (src/config/ultima_configuracion_coordenadas.json + dmax_map.txt).
 Shows where each touch is detected in both ROI (window) and viewport (projection) coordinates.
 
 Run after calibrating:  python test_touch_kinect.py   or   uv run test_touch_kinect.py
@@ -15,6 +15,12 @@ import os
 import sys
 from openni import openni2
 
+_project_root = os.path.abspath(os.path.dirname(__file__))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+from src.core.calibration import get_coordenadas_path, load_touch_depth_maps
+
 # Viewport (projection) size - must match your calibration
 VIEW_WIDTH = 1280
 VIEW_HEIGHT = 800
@@ -22,43 +28,6 @@ VIEW_HEIGHT = 800
 # Min/max contour area to count as a touch (reject noise and huge blobs)
 MIN_TOUCH_AREA = 100
 MAX_TOUCH_AREA = 50000
-
-# Depth band: how close to the surface counts as touch (same logic as main.py)
-DMAX_OFFSET = 5
-DMIN_RANGE = 10
-
-
-def load_and_validate_dmax_map(coordenadas):
-    """Load and validate dmax_map.txt against calibration coordinates."""
-    try:
-        dmax_map = np.loadtxt("config/dmax_map.txt", dtype=np.uint16)
-    except FileNotFoundError:
-        print("ERROR: No se encontró 'config/dmax_map.txt'. Ejecuta la calibración primero.")
-        return None, None, None
-    except ValueError as e:
-        print(f"ERROR: Formato inválido en dmax_map.txt: {e}")
-        return None, None, None
-
-    xw_min = coordenadas.get("xw_min", 0)
-    xw_max = coordenadas.get("xw_max", 0)
-    yw_min = coordenadas.get("yw_min", 0)
-    yw_max = coordenadas.get("yw_max", 0)
-    w = xw_max - xw_min
-    h = yw_max - yw_min
-    expected_size = w * h
-    actual_size = dmax_map.size
-
-    if actual_size != expected_size:
-        print("ERROR: Dimensiones de dmax_map no coinciden con las coordenadas.")
-        print(f"  Esperado: {w} x {h} = {expected_size}, archivo: {actual_size}")
-        return None, None, None
-
-    try:
-        dmax_map_reshaped = dmax_map.reshape((h, w))
-        return dmax_map_reshaped, w, h
-    except ValueError as e:
-        print(f"ERROR al hacer reshape: {e}")
-        return None, None, None
 
 
 def window_to_viewport(cx, cy, xw_min, xw_max, yw_min, yw_max, xv_min, xv_max, yv_min, yv_max):
@@ -69,7 +38,7 @@ def window_to_viewport(cx, cy, xw_min, xw_max, yw_min, yw_max, xv_min, xv_max, y
 
 
 def run_touch_test(device):
-    config_path = "config/ultima_configuracion_coordenadas.json"
+    config_path = get_coordenadas_path()
     if not os.path.exists(config_path):
         print(f"ERROR: No se encontró '{config_path}'. Ejecuta la calibración primero.")
         return
@@ -77,7 +46,7 @@ def run_touch_test(device):
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    dmax_map, w, h = load_and_validate_dmax_map(config)
+    dmax_map, dmin_map = load_touch_depth_maps(config, band_profile="menu")
     if dmax_map is None:
         return
 
@@ -92,10 +61,6 @@ def run_touch_test(device):
     homography_matrix = config.get("homography_matrix")
     if homography_matrix is not None:
         homography_matrix = np.array(homography_matrix, dtype=np.float32)
-
-    # Depth band for touch (same as main.py)
-    dmax_map = dmax_map.astype(np.int32) - DMAX_OFFSET
-    dmin_map = dmax_map - DMIN_RANGE
 
     depth_stream = device.create_depth_stream()
     depth_stream.start()

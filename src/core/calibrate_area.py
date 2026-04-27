@@ -1,10 +1,19 @@
+import argparse
+import json
+import os
+import sys
+
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import cv2
 import numpy as np
 from tqdm import tqdm
 from openni import openni2
 import customtkinter as ctk  # Para preguntar al usuario
-import json
-import os
+
+from src.core.calibration import capture_dmax_map, get_coordenadas_path, get_dmax_map_path
 
 # Función para mostrar un mensaje en pantalla
 def mostrar_mensaje(proyeccion, texto, xv_min, yv_min, xv_max, yv_max):
@@ -16,48 +25,27 @@ def mostrar_mensaje(proyeccion, texto, xv_min, yv_min, xv_max, yv_max):
 
 # Función para calcular dmax_map con barra de progreso y mensaje
 def calculate_dmax(device, calibrated_area, xv_min, yv_min, xv_max, yv_max, num_frames=500):
-    depth_stream = device.create_depth_stream()
-    depth_stream.start()
-
     x, y, w, h = calibrated_area
     print(f"{w} * {h} = {w * h} ")
 
-    # Definir un rango de profundidad para optimizar el uso de memoria
-    min_depth = 500  # Ajusta según tu aplicación
-    max_depth = 4000
-    depth_accum = np.zeros((h, w, max_depth - min_depth + 1), dtype=int)
-
-    # Crear una ventana de proyección para mostrar el mensaje
     proyeccion = np.zeros((800, 1280, 3), dtype=np.uint8)
     mostrar_mensaje(proyeccion, "Calibrando...", xv_min, yv_min, xv_max, yv_max)
     cv2.imshow("Proyeccion", proyeccion)
     cv2.waitKey(1)
 
-    for _ in tqdm(range(num_frames), desc="Numero de frames", unit="frames"):
-        frame = depth_stream.read_frame()
-        depth_data = np.frombuffer(frame.get_buffer_as_uint16(), dtype=np.uint16).reshape(480, 640)
-        depth_data = cv2.flip(depth_data, 1)
-        depth_roi = depth_data[y:y+h, x:x+w]
+    dmax_map = capture_dmax_map(
+        device,
+        calibrated_area,
+        num_frames=num_frames,
+        save_path=get_dmax_map_path(),
+        progress=tqdm(range(num_frames), desc="Numero de frames", unit="frames"),
+    )
 
-        # Vectorizado para contar frecuencias
-        valid_mask = (depth_roi >= min_depth) & (depth_roi <= max_depth)
-        valid_depth = depth_roi[valid_mask] - min_depth
-        indices = np.where(valid_mask)
-        depth_accum[indices[0], indices[1], valid_depth] += 1
-
-    depth_stream.stop()
-
-    # Generar el mapa dmax basado en la moda de la profundidad
-    dmax_map = np.argmax(depth_accum, axis=2) + min_depth
-
-    np.savetxt("config/dmax_map.txt", dmax_map.flatten(), fmt="%d")
-    
-    # Mostrar mensaje de finalización
-    cv2.rectangle(proyeccion, (xv_min, yv_min), (xv_max, yv_max), (0,0,0), -1)
+    cv2.rectangle(proyeccion, (xv_min, yv_min), (xv_max, yv_max), (0, 0, 0), -1)
     mostrar_mensaje(proyeccion, "Calibracion Completada", xv_min, yv_min, xv_max, yv_max)
     cv2.imshow("Proyeccion", proyeccion)
     cv2.waitKey(1000)
-    
+
     return dmax_map
 
 # Función para proyectar cuadrados de calibración
@@ -358,6 +346,12 @@ def calibrar_mesa_y_detectar_toques(device):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+    # Liberar profundidad antes de capture_dmax_map (evita conflicto de stream OpenNI)
+    try:
+        depth_stream.stop()
+    except Exception:
+        pass
+
     # Verificar que la calibración se completó antes de continuar
     if not calibracion_completada:
         print("=" * 60)
@@ -389,8 +383,9 @@ def calibrar_mesa_y_detectar_toques(device):
         "homography_matrix": homography_matrix.tolist() if homography_matrix is not None else None
     }
 
-    os.makedirs("config", exist_ok=True)
-    with open("config/ultima_configuracion_coordenadas.json", "w") as file:
+    cfg_path = get_coordenadas_path()
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    with open(cfg_path, "w", encoding="utf-8") as file:
         json.dump(coordenadas, file, indent=4)
     print("✓ Coordenadas guardadas exitosamente.")
     # Detección de toques
@@ -701,7 +696,79 @@ def calibrar_mesa_y_detectar_toques(device):
         depth_stream.stop()
         cv2.destroyAllWindows()
 
+
+def run_solo_profundidad(device, num_frames=500):
+    """
+    Regenera solo dmax_map.txt usando la ROI del JSON (sin recalibrar homografía).
+    Útil cuando cambia la altura de la mesa.
+    """
+    cfg_path = get_coordenadas_path()
+    if not os.path.isfile(cfg_path):
+        print(f"ERROR: No existe '{cfg_path}'. Ejecuta primero la calibración completa.")
+        return
+
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        coordenadas = json.load(f)
+
+    xw_min = coordenadas["xw_min"]
+    xw_max = coordenadas["xw_max"]
+    yw_min = coordenadas["yw_min"]
+    yw_max = coordenadas["yw_max"]
+    xv_min = coordenadas["xv_min"]
+    xv_max = coordenadas["xv_max"]
+    yv_min = coordenadas["yv_min"]
+    yv_max = coordenadas["yv_max"]
+
+    roi = (xw_min, yw_min, xw_max - xw_min, yw_max - yw_min)
+    view_width = 1280
+    view_height = 800
+
+    cv2.namedWindow("Proyeccion", cv2.WINDOW_NORMAL)
+    cv2.moveWindow("Proyeccion", 1920, 0)
+    cv2.setWindowProperty("Proyeccion", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    proyeccion = np.zeros((view_height, view_width, 3), dtype=np.uint8)
+    mostrar_mensaje(
+        proyeccion,
+        "Mesa despejada: calibrando profundidad...",
+        xv_min,
+        yv_min,
+        xv_max,
+        yv_max,
+    )
+    cv2.imshow("Proyeccion", proyeccion)
+    cv2.waitKey(500)
+
+    print("Mantén la mesa despejada (sin manos ni objetos en la zona). Capturando profundidad...")
+    capture_dmax_map(
+        device,
+        roi,
+        num_frames=num_frames,
+        save_path=get_dmax_map_path(),
+        progress=tqdm(range(num_frames), desc="Numero de frames", unit="frames"),
+    )
+
+    coordenadas["surface_depth_offset"] = 0
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(coordenadas, f, indent=4)
+
+    cv2.rectangle(proyeccion, (xv_min, yv_min), (xv_max, yv_max), (0, 0, 0), -1)
+    mostrar_mensaje(proyeccion, "Profundidad actualizada", xv_min, yv_min, xv_max, yv_max)
+    cv2.imshow("Proyeccion", proyeccion)
+    cv2.waitKey(2000)
+    cv2.destroyAllWindows()
+    print(f"✓ Guardado: {get_dmax_map_path()}")
+    print(f"✓ surface_depth_offset=0 en {cfg_path}")
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Calibración mesa / Kinect")
+    parser.add_argument(
+        "--solo-profundidad",
+        action="store_true",
+        help="Solo regenera dmax_map.txt con la ROI del JSON (mesa despejada).",
+    )
+    args = parser.parse_args()
     # Inicializar OpenNI2 - Buscar en múltiples ubicaciones comunes
     openni2_paths = []
     
@@ -804,7 +871,10 @@ if __name__ == "__main__":
         exit(1)
     
     try:
-        calibrar_mesa_y_detectar_toques(device)
+        if args.solo_profundidad:
+            run_solo_profundidad(device)
+        else:
+            calibrar_mesa_y_detectar_toques(device)
     except KeyboardInterrupt:
         print("\n\nCalibración cancelada por el usuario.")
     except Exception as e:

@@ -20,6 +20,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from src.features.confetti import ConfettiSystem
 from src.core.font_utils import get_ubuntu_font
+from src.core.calibration import map_depth_roi_to_viewport
 from src.components import draw_circular_button, draw_rectangular_button, is_point_in_circular_button, is_point_in_rectangular_button
 
 try:
@@ -86,11 +87,41 @@ def put_text_safe(img, text, position, font_face, font_scale, color, thickness, 
         cv2.putText(img, text, position, font_face, font_scale, color, thickness, line_type)
 
 
-def create_end_screen(image_path, message_text, show_confetti, original_image, original_image_pos, 
-                      view_width, view_height, confetti_system=None):
+def _overlay_lingo_bien_title(screen, char_x, char_y, char_new_width, char_new_height):
+    """Dibuja «¡Muy Bien!» encima del confeti (mismo estilo que create_end_screen)."""
+    texto_a_dibujar = "¡Muy Bien!"
+    font_message = cv2.FONT_HERSHEY_DUPLEX
+    font_scale_message = 1.5
+    thickness_message = 3
+    message_color = (0, 255, 0)
+    message_y = char_y + char_new_height + 20
+    try:
+        from PIL import Image, ImageDraw
+        font_ubuntu = get_ubuntu_font(font_scale=font_scale_message, bold=True)
+        img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            bbox = draw.textbbox((0, 0), texto_a_dibujar, font=font_ubuntu)
+            message_width = bbox[2] - bbox[0]
+        except AttributeError:
+            bbox = font_ubuntu.getbbox(texto_a_dibujar) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
+            message_width = bbox[2] - bbox[0]
+    except Exception:
+        text_size_message, _ = cv2.getTextSize(texto_a_dibujar, font_message, font_scale_message, thickness_message)
+        message_width = text_size_message[0]
+    message_x = char_x + (char_new_width - message_width) // 2 - 80
+    put_text_safe(screen, texto_a_dibujar, (message_x + 2, message_y + 2),
+                  font_message, font_scale_message, (0, 0, 0), thickness_message + 1, bold=True)
+    put_text_safe(screen, texto_a_dibujar, (message_x, message_y),
+                  font_message, font_scale_message, message_color, thickness_message, bold=True)
+
+
+def create_end_screen(image_path, message_text, show_confetti, original_image, original_image_pos,
+                      view_width, view_height, confetti_system=None,
+                      draw_celebration_confetti=True, draw_lingo_bien_title=True):
     """
     Crea una pantalla genérica de fin de juego que puede mostrar cualquier imagen y mensaje.
-    
+
     Args:
         image_path: Ruta a la imagen del personaje (ej: "images/LingoBien.png" o "images/LingoMal.png")
         message_text: Texto opcional a mostrar debajo de la imagen del personaje
@@ -99,22 +130,22 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
         original_image_pos: Tupla (img_x, img_y, new_width, new_height) con la posición de la imagen original
         view_width, view_height: Dimensiones de la pantalla
         confetti_system: Sistema de confetti (opcional, solo si show_confetti=True)
-    
+        draw_celebration_confetti: Si False, no dibuja confetti (útil para raster estático + animación aparte).
+        draw_lingo_bien_title: Si False, no dibuja el título «¡Muy Bien!» sobre LingoBien (p. ej. para dibujarlo tras el confeti).
+
     Returns:
-        tuple: (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height)
+        tuple: (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height,
+                salir_button_bounds, siguiente_button_bounds, char_x, char_y, char_new_width, char_new_height)
     """
     img_x, img_y, new_width, new_height = original_image_pos
     
     # Crear pantalla con opacidad negra
     screen = np.zeros((view_height, view_width, 3), dtype=np.uint8)
-    
-    # Crear degradado de fondo
-    for y in range(view_height):
-        ratio = y / view_height
-        r = int(255 * (0.3 + 0.4 * ratio))
-        g = int(200 * (0.5 + 0.3 * ratio))
-        b = int(255 * (0.8 - 0.3 * ratio))
-        screen[y, :] = [b, g, r]
+
+    ratio_col = np.linspace(0.0, 1.0, view_height, dtype=np.float32)[:, np.newaxis]
+    screen[:, :, 0] = (255 * (0.8 - 0.3 * ratio_col)).astype(np.uint8)
+    screen[:, :, 1] = (200 * (0.5 + 0.3 * ratio_col)).astype(np.uint8)
+    screen[:, :, 2] = (255 * (0.3 + 0.4 * ratio_col)).astype(np.uint8)
     
     # Dibujar imagen original con opacidad negra (0.3 para oscurecer más)
     opacity = 0.3
@@ -260,50 +291,26 @@ def create_end_screen(image_path, message_text, show_confetti, original_image, o
         shadow=False
     )
     
-    # Draw confetti on screen if enabled (ANTES del texto para que el texto quede encima)
-    if show_confetti and confetti_system is not None:
+    if show_confetti and confetti_system is not None and draw_celebration_confetti:
         confetti_system.draw(screen)
-    
-    # Dibujar el mensaje "¡Muy Bien!" DESPUÉS del confetti para que quede visible encima
-    # Asegurarse de dibujar el texto siempre que sea LingoBien, incluso si message_text es None
-    if "LingoBien" in image_path and char_new_height > 0:
-        # Usar "¡Muy Bien!" como texto si no se proporcionó uno
-        texto_a_dibujar = "¡Muy Bien!"
-        # Re-dibujar el texto "Muy bien" encima del confetti
-        font_message = cv2.FONT_HERSHEY_DUPLEX
-        font_scale_message = 1.5
-        thickness_message = 3
-        message_color = (0, 255, 0)  # Verde como en historias
-        message_y = char_y + char_new_height + 20  # 20 píxeles abajo de la imagen
-        
-        # Usar PIL para obtener tamaño preciso del texto con Ubuntu font para centrado correcto
-        try:
-            from PIL import Image, ImageDraw
-            font_ubuntu = get_ubuntu_font(font_scale=font_scale_message, bold=True)
-            img_pil = Image.fromarray(cv2.cvtColor(screen, cv2.COLOR_BGR2RGB))
-            draw = ImageDraw.Draw(img_pil)
-            try:
-                bbox = draw.textbbox((0, 0), texto_a_dibujar, font=font_ubuntu)
-                message_width = bbox[2] - bbox[0]
-            except AttributeError:
-                bbox = font_ubuntu.getbbox(texto_a_dibujar) if hasattr(font_ubuntu, "getbbox") else (0, 0, 0, 0)
-                message_width = bbox[2] - bbox[0]
-        except:
-            text_size_message, _ = cv2.getTextSize(texto_a_dibujar, font_message, font_scale_message, thickness_message)
-            message_width = text_size_message[0]
-        
-        # Centrar texto horizontalmente basado en la posición de la imagen LingoBien
-        # Usar el centro de la imagen como referencia y mover más a la izquierda
-        message_x = char_x + (char_new_width - message_width) // 2 - 80
-        
-        # Dibujar texto con sombra (mismo estilo que historias) - DESPUÉS del confetti
-        put_text_safe(screen, texto_a_dibujar, (message_x + 2, message_y + 2),
-                     font_message, font_scale_message, (0, 0, 0), thickness_message + 1, bold=True)  # Sombra negra
-        put_text_safe(screen, texto_a_dibujar, (message_x, message_y),
-                     font_message, font_scale_message, message_color, thickness_message, bold=True)  # Texto verde
-    
-    return (screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, 
-            salir_button_bounds, siguiente_button_bounds)
+
+    if draw_lingo_bien_title and "LingoBien" in image_path and char_new_height > 0:
+        _overlay_lingo_bien_title(screen, char_x, char_y, char_new_width, char_new_height)
+
+    return (
+        screen,
+        button_salir_x,
+        button_siguiente_x,
+        button_y,
+        button_width,
+        button_height,
+        salir_button_bounds,
+        siguiente_button_bounds,
+        char_x,
+        char_y,
+        char_new_width,
+        char_new_height,
+    )
 
 
 def draw_close_card(screen, view_width, view_height, elevated=False):
@@ -463,10 +470,15 @@ def draw_logo(screen, view_width, view_height):
         return False
 
 
-def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, model=None):
+def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, model=None, existing_window_name=None):
     """
     Juego de reconocimiento de voz para absurdos lógicos.
     Muestra una imagen aleatoria y el usuario debe describir qué está mal usando voz.
+
+    Args:
+        existing_window_name: Si se indica (ej. "Menú de Juegos"), se reutiliza esa ventana
+            en el videobeam. Al salir con X no se cierra la ventana para que el menú
+            pueda actualizarla y mostrarse de inmediato.
     """
     # Configurar logging
     logging.basicConfig(
@@ -509,11 +521,30 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         print(f"Error: El archivo {json_path} no es un JSON válido")
         return
     
-    # Crear ventana una sola vez (fuera del bucle)
-    window_name = "Juego de Reconocimiento de Voz"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.moveWindow(window_name, 1920, 0)
-    
+    # Usar ventana existente (videobeam) o crear una nueva
+    window_name = existing_window_name if existing_window_name else "Juego de Reconocimiento de Voz"
+    use_shared_window = bool(existing_window_name)
+    window_exists = False
+    if use_shared_window:
+        try:
+            prop = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+            if prop >= 0:
+                window_exists = True
+        except Exception:
+            pass
+    if not window_exists:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(window_name, 1920, 0)
+        cv2.waitKey(50)
+
+    def _close_window_if_own():
+        """Cierra la ventana solo si es propia del juego (no la compartida con el menú)."""
+        if not use_shared_window:
+            try:
+                cv2.destroyWindow(window_name)
+            except Exception:
+                pass
+
     # Variable para controlar si es la primera imagen (solo TTS en la primera)
     primera_imagen = True
     
@@ -819,20 +850,30 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
         # Inicializar reconocimiento de voz (pero no escuchar todavía)
         try:
             recognizer = sr.Recognizer()
-            # Configurar reconocedor para mejor precisión
+            # Configurar reconocedor para mejor precisión y tiempos más acotados
             recognizer.energy_threshold = 300  # Umbral de energía inicial
             recognizer.dynamic_energy_threshold = True  # Ajustar dinámicamente
-            recognizer.pause_threshold = 1.5  # Más tiempo de silencio después del habla para capturar mejor el final
+            # Requerir 5 segundos de silencio sostenido antes de cortar la frase
+            recognizer.pause_threshold = 5.0
+            recognizer.phrase_threshold = 0.3
+            # Mantener un poco de audio sin voz para no recortar el final
+            recognizer.non_speaking_duration = 0.5
             recognizer.operation_timeout = None  # Sin timeout en operaciones
             
-            # Usar dispositivo de audio 3
+            # Índice PyAudio (no es el “puerto USB” físico). Cambiar con variable de entorno LINGO_MIC_DEVICE_INDEX.
+            mic_index = int(os.environ.get("LINGO_MIC_DEVICE_INDEX", "2"))
             try:
-                microphone = sr.Microphone(device_index=3)
+                microphone = sr.Microphone(device_index=mic_index)
+                print(f"Usando micrófono (device_index={mic_index}). Para otro mic: set LINGO_MIC_DEVICE_INDEX=N (ver índices con python test_microphone_pyaudio.py)")
             except Exception as e:
-                print(f"Error al inicializar micrófono (dispositivo 3): {e}")
-                cv2.destroyWindow(window_name)
-                continue
-            print(f"Usando micrófono (dispositivo 3): {microphone}")
+                print(f"Error al inicializar micrófono (device_index={mic_index}): {e}")
+                try:
+                    microphone = sr.Microphone()
+                    print("Usando micrófono por defecto del sistema (sin índice).")
+                except Exception as e2:
+                    print(f"No se pudo abrir micrófono por defecto: {e2}")
+                    _close_window_if_own()
+                    continue
         except OSError as e:
             if "PyAudio" in str(e) or "pyaudio" in str(e).lower():
                 print("Error: PyAudio no está instalado. Instalando...")
@@ -840,22 +881,20 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 print("O si eso no funciona, instala desde: https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio")
             else:
                 print(f"Error al inicializar reconocimiento de voz: {e}")
-            cv2.destroyWindow(window_name)
+            _close_window_if_own()
             continue
         except Exception as e:
             print(f"Error al inicializar reconocimiento de voz: {e}")
             print("Asegúrate de que PyAudio esté instalado: uv pip install pyaudio")
-            cv2.destroyWindow(window_name)
+            _close_window_if_own()
             continue
         
         # Función para detectar si se tocó el botón circular
         def detectar_boton_circular_tocado(cx_roi, cy_roi):
             # cx_roi y cy_roi son coordenadas relativas a depth_roi
-            # Convertir coordenadas de ROI a viewport
-            sx = float(xv_max - xv_min) / (xw_max - xw_min)
-            sy = float(yv_max - yv_min) / (yw_max - yw_min)
-            x_viewport = int(xv_min + (cx_roi * sx))
-            y_viewport = int(yv_min + (cy_roi * sy))
+            x_viewport, y_viewport = map_depth_roi_to_viewport(
+                cx_roi, cy_roi, coordenadas, view_width=view_width, view_height=view_height
+            )
             
             # Verificar si el toque está dentro del círculo usando component helper
             if is_point_in_circular_button(x_viewport, y_viewport, hablar_button_bounds):
@@ -892,11 +931,11 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                             else:
                                 print(f"Error al descargar/cargar modelo después de {max_retries} intentos: {e2}")
                                 print("El juego continuará pero no podrá evaluar respuestas correctamente.")
-                                cv2.destroyWindow(window_name)
+                                _close_window_if_own()
                                 modelo_cargado_correctamente = False
                 except Exception as e3:
                     print(f"Error crítico al cargar modelo: {e3}")
-                    cv2.destroyWindow(window_name)
+                    _close_window_if_own()
                     modelo_cargado_correctamente = False
         else:
             print("✓ Usando modelo de sentence-transformers pre-cargado")
@@ -978,13 +1017,11 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if M['m00'] != 0:
                             cx = int(M['m10'] / M['m00'])
                             cy = int(M['m01'] / M['m00'])
-                            
-                            # Convertir coordenadas de ROI a viewport para detectar toque en X
-                            sx = float(xv_max - xv_min) / (xw_max - xw_min)
-                            sy = float(yv_max - yv_min) / (yw_max - yw_min)
-                            x_viewport_touch = int(xv_min + (cx * sx))
-                            y_viewport_touch = int(yv_min + (cy * sy))
-                            
+
+                            x_viewport_touch, y_viewport_touch = map_depth_roi_to_viewport(
+                                cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                            )
+
                             # Calcular posición del botón X para verificar toque
                             base_card_radius = 50
                             card_margin_x = 180
@@ -1040,13 +1077,11 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if M['m00'] != 0:
                             cx = int(M['m10'] / M['m00'])
                             cy = int(M['m01'] / M['m00'])
-                            
-                            # Convertir coordenadas de ROI a viewport para detectar toque en X
-                            sx = float(xv_max - xv_min) / (xw_max - xw_min)
-                            sy = float(yv_max - yv_min) / (yw_max - yw_min)
-                            x_viewport_touch = int(xv_min + (cx * sx))
-                            y_viewport_touch = int(yv_min + (cy * sy))
-                            
+
+                            x_viewport_touch, y_viewport_touch = map_depth_roi_to_viewport(
+                                cx, cy, coordenadas, view_width=view_width, view_height=view_height
+                            )
+
                             # Verificar si se tocó el botón X (cerrar)
                             # Usar la posición base del botón (sin elevación) para la detección
                             base_card_radius = 50
@@ -1078,11 +1113,8 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                     depth_stream.stop()
                                 except:
                                     pass
-                                # Cerrar ventana y salir
-                                try:
-                                    cv2.destroyWindow(window_name)
-                                except:
-                                    pass
+                                # No cerrar ventana si es la del menú (el menú la actualizará en el videobeam)
+                                _close_window_if_own()
                                 return  # Volver al menú principal
                             
                             # Verificar si se tocó el botón circular (solo si está habilitado)
@@ -1108,33 +1140,9 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                             shadow=True
                                         )
                                         
-                                        # Agregar franja "Escuchando..." debajo del botón
-                                        mensaje_escuchando = "Escuchando..."
-                                        font_escuchando = cv2.FONT_HERSHEY_DUPLEX
-                                        font_scale_escuchando = 0.9
-                                        thickness_escuchando = 2
-                                        text_size_escuchando, _ = cv2.getTextSize(mensaje_escuchando, font_escuchando, font_scale_escuchando, thickness_escuchando)
-                                        text_x_escuchando = (view_width - text_size_escuchando[0]) // 2
-                                        text_y_escuchando = circle_center_y + circle_radius + 50  # Debajo del botón
-                                        
-                                        # Color azul oscuro para indicar que está escuchando
-                                        color_fondo_escuchando = (200, 100, 0)  # Azul oscuro (en BGR)
-                                        
-                                        # Dibujar franja de fondo con color azul (siempre en la parte inferior)
-                                        franja_y_inicio = text_y_escuchando - 25
-                                        franja_y_fin = view_height - 1  # Llegar hasta el borde inferior
-                                        cv2.rectangle(current_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                                     color_fondo_escuchando, -1)  # Fondo azul
-                                        cv2.rectangle(current_screen, (0, franja_y_inicio), (view_width, franja_y_fin), 
-                                                     (255, 255, 255), 2)  # Borde blanco
-                                        
-                                        # Texto siempre en blanco (usar función segura para caracteres acentuados)
-                                        put_text_safe(current_screen, mensaje_escuchando, (text_x_escuchando + 2, text_y_escuchando + 2), 
-                                                   font_escuchando, font_scale_escuchando, (0, 0, 0), thickness_escuchando + 1)  # Sombra negra
-                                        put_text_safe(current_screen, mensaje_escuchando, (text_x_escuchando, text_y_escuchando), 
-                                                   font_escuchando, font_scale_escuchando, (255, 255, 255), thickness_escuchando)  # Texto blanco
-                                        
-                                        # Mostrar pantalla actualizada
+                                        # Mostrar solo el estado del botón presionado aquí.
+                                        # El mensaje "Escuchando..." se mostrará más tarde,
+                                        # cuando el micrófono esté realmente listo para grabar.
                                         videobeam_screen_scaled = scale_to_videobeam(current_screen)
                                         cv2.imshow(window_name, videobeam_screen_scaled)
                                         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -1164,10 +1172,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 if key == ord('q'):
                     rgb_stream.stop()
                     depth_stream.stop()
-                    try:
-                        cv2.destroyWindow(window_name)
-                    except:
-                        pass
+                    _close_window_if_own()
                     return
             
             # Si el botón fue presionado, ahora sí escuchar audio
@@ -1185,17 +1190,85 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                     print(f"⚠ Error al ajustar ruido ambiente: {e}")
                     # Continuar de todas formas
                 
+                # En este punto el micrófono ya está calibrado.
+                # Ahora sí mostramos la franja "Escuchando..." en pantalla.
+                listening_screen = videobeam_screen.copy()
+                draw_circular_button(
+                    listening_screen,
+                    circle_center_x, circle_center_y, circle_radius,
+                    "Hablar",
+                    bg_color=(0, 150, 0),  # Darker green
+                    border_color=(255, 255, 255),
+                    border_thickness=3,
+                    text_color=(255, 255, 255),
+                    font_scale=1.3,
+                    bold=True,
+                    shadow=True
+                )
+                mensaje_escuchando = "Escuchando..."
+                font_escuchando = cv2.FONT_HERSHEY_DUPLEX
+                font_scale_escuchando = 0.9
+                thickness_escuchando = 2
+                text_size_escuchando, _ = cv2.getTextSize(
+                    mensaje_escuchando,
+                    font_escuchando,
+                    font_scale_escuchando,
+                    thickness_escuchando
+                )
+                text_x_escuchando = (view_width - text_size_escuchando[0]) // 2
+                text_y_escuchando = circle_center_y + circle_radius + 50  # Debajo del botón
+                color_fondo_escuchando = (200, 100, 0)  # Azul oscuro (en BGR)
+                franja_y_inicio = text_y_escuchando - 25
+                franja_y_fin = view_height - 1
+                cv2.rectangle(
+                    listening_screen,
+                    (0, franja_y_inicio),
+                    (view_width, franja_y_fin),
+                    color_fondo_escuchando,
+                    -1
+                )
+                cv2.rectangle(
+                    listening_screen,
+                    (0, franja_y_inicio),
+                    (view_width, franja_y_fin),
+                    (255, 255, 255),
+                    2
+                )
+                put_text_safe(
+                    listening_screen,
+                    mensaje_escuchando,
+                    (text_x_escuchando + 2, text_y_escuchando + 2),
+                    font_escuchando,
+                    font_scale_escuchando,
+                    (0, 0, 0),
+                    thickness_escuchando + 1
+                )
+                put_text_safe(
+                    listening_screen,
+                    mensaje_escuchando,
+                    (text_x_escuchando, text_y_escuchando),
+                    font_escuchando,
+                    font_scale_escuchando,
+                    (255, 255, 255),
+                    thickness_escuchando
+                )
+                videobeam_screen_scaled = scale_to_videobeam(listening_screen)
+                cv2.imshow(window_name, videobeam_screen_scaled)
+                # No volvemos a tocar aquí el modo de ventana para evitar
+                # recreaciones o parpadeos; ya está en fullscreen desde antes.
+                cv2.waitKey(200)
+                
                 # Escuchar audio con detección de silencio
                 print("=" * 50)
                 print("INICIANDO CAPTURA DE AUDIO")
                 print("=" * 50)
-                print("Esperando audio (timeout: 20 segundos, límite de frase: 25 segundos)...")
+                print("Esperando audio (timeout: 7 segundos, límite de frase: 7 segundos)...")
                 print("Habla ahora...")
                 
                 try:
                     with microphone as source:
                         # Escuchar hasta que detecte que terminó de hablar
-                        audio = recognizer.listen(source, timeout=20, phrase_time_limit=25)
+                        audio = recognizer.listen(source, timeout=7, phrase_time_limit=7)
                         if audio:
                             duracion = len(audio.frame_data) / audio.sample_rate
                             print(f"✓ Audio capturado exitosamente!")
@@ -1404,25 +1477,42 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 yv_max = coordenadas["yv_max"]
                 
                 # Initialize confetti system with multiple bursts
-                confetti_system = ConfettiSystem(view_width, view_height, num_particles=200)
+                confetti_system = ConfettiSystem(view_width, view_height, num_particles=120)
                 confetti_system.start(multiple_bursts=True, num_burst_points=3)
                 
-                # Crear pantalla de éxito usando función genérica
-                success_screen, button_salir_x, button_siguiente_x, button_y, button_width, button_height, \
-                    salir_button_bounds, siguiente_button_bounds = \
-                    create_end_screen(
-                        image_path="images/LingoBien.png",
-                        message_text=None,  # No message for success screen
-                        show_confetti=True,
-                        original_image=imagen_resized,
-                        original_image_pos=(img_x, img_y, new_width, new_height),
-                        view_width=view_width,
-                        view_height=view_height,
-                        confetti_system=confetti_system
-                    )
-                
+                # Raster estático una vez; en el bucle solo copia + confetti + título (evita reconstruir toda la pantalla).
+                (
+                    success_base,
+                    button_salir_x,
+                    button_siguiente_x,
+                    button_y,
+                    button_width,
+                    button_height,
+                    salir_button_bounds,
+                    siguiente_button_bounds,
+                    lingo_char_x,
+                    lingo_char_y,
+                    lingo_char_w,
+                    lingo_char_h,
+                ) = create_end_screen(
+                    image_path="images/LingoBien.png",
+                    message_text=None,
+                    show_confetti=False,
+                    original_image=imagen_resized,
+                    original_image_pos=(img_x, img_y, new_width, new_height),
+                    view_width=view_width,
+                    view_height=view_height,
+                    confetti_system=confetti_system,
+                    draw_celebration_confetti=False,
+                    draw_lingo_bien_title=False,
+                )
+                success_work = np.empty_like(success_base)
+                np.copyto(success_work, success_base)
+                confetti_system.draw(success_work)
+                _overlay_lingo_bien_title(success_work, lingo_char_x, lingo_char_y, lingo_char_w, lingo_char_h)
+
                 # Mostrar pantalla de éxito
-                success_screen_scaled = scale_to_videobeam(success_screen)
+                success_screen_scaled = scale_to_videobeam(success_work)
                 cv2.imshow(window_name, success_screen_scaled)
                 cv2.waitKey(10)
                 cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -1437,11 +1527,9 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 # Función para detectar toque en los botones
                 def detectar_boton_tocado(cx_roi, cy_roi):
                     # cx_roi y cy_roi son coordenadas relativas a depth_roi
-                    # Convertir coordenadas de ROI a viewport
-                    sx = float(xv_max - xv_min) / (xw_max - xw_min)
-                    sy = float(yv_max - yv_min) / (yw_max - yw_min)
-                    x_viewport = int(xv_min + (cx_roi * sx))
-                    y_viewport = int(yv_min + (cy_roi * sy))
+                    x_viewport, y_viewport = map_depth_roi_to_viewport(
+                        cx_roi, cy_roi, coordenadas, view_width=view_width, view_height=view_height
+                    )
                     
                     # Verificar botón "Salir" (izquierda)
                     if is_point_in_rectangular_button(x_viewport, y_viewport, salir_button_bounds):
@@ -1457,22 +1545,11 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 salir_bucle = False
                 try:
                     while not salir_bucle:
-                        # Update confetti system
                         confetti_system.update()
-                        
-                        # Recreate success screen with confetti using generic function
-                        success_screen, _, _, _, _, _, _, _ = \
-                            create_end_screen(
-                                image_path="images/LingoBien.png",
-                                message_text=None,  # No message for success screen
-                                show_confetti=True,
-                                original_image=imagen_resized,
-                                original_image_pos=(img_x, img_y, new_width, new_height),
-                                view_width=view_width,
-                                view_height=view_height,
-                                confetti_system=confetti_system
-                            )
-                        
+                        np.copyto(success_work, success_base)
+                        confetti_system.draw(success_work)
+                        _overlay_lingo_bien_title(success_work, lingo_char_x, lingo_char_y, lingo_char_w, lingo_char_h)
+
                         frame = rgb_stream.read_frame()
                         depth_frame = depth_stream.read_frame()
                         
@@ -1514,7 +1591,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                             button_pressed = True
                                             
                                             # Animación de botón presionado
-                                            temp_screen = success_screen.copy()
+                                            temp_screen = success_work.copy()
                                             
                                             if boton_tocado == "siguiente":
                                                 print("Botón 'Siguiente' presionado")
@@ -1556,17 +1633,13 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                                             if boton_tocado == "menu":
                                                 # Volver al menú principal
                                                 accion_seleccionada = "menu"
-                                                # Cerrar solo la ventana del juego (no todas las ventanas)
-                                                try:
-                                                    cv2.destroyWindow(window_name)
-                                                except:
-                                                    pass
+                                                _close_window_if_own()
                                                 salir_bucle = True
                                                 break
                                             elif boton_tocado == "siguiente":
                                                 # Continuar con siguiente absurdo
                                                 accion_seleccionada = "siguiente"
-                                                cv2.destroyWindow(window_name)
+                                                _close_window_if_own()
                                                 salir_bucle = True
                                                 break
                         
@@ -1574,8 +1647,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if button_pressed and (not hay_toque or boton_actual_tocado is None):
                             button_pressed = False
                         
-                        # Mostrar pantalla (already updated with confetti above)
-                        success_screen_scaled = scale_to_videobeam(success_screen)
+                        success_screen_scaled = scale_to_videobeam(success_work)
                         cv2.imshow(window_name, success_screen_scaled)
                         # Asegurar que la ventana esté configurada correctamente en cada frame
                         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -1586,10 +1658,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                         if key == ord('q'):
                             rgb_stream.stop()
                             depth_stream.stop()
-                            try:
-                                cv2.destroyWindow(window_name)
-                            except:
-                                pass
+                            _close_window_if_own()
                             return
                 finally:
                     # Asegurar que los streams se detengan
@@ -1601,11 +1670,7 @@ def juego_absurdos_reconocimiento_voz(device, coordenadas, dmax_map, dmin_map, m
                 
                 # Verificar qué acción se seleccionó (después del bloque try-finally, dentro del if es_correcta)
                 if accion_seleccionada == "menu":
-                    # Cerrar solo la ventana del juego (no todas las ventanas)
-                    try:
-                        cv2.destroyWindow(window_name)
-                    except:
-                        pass
+                    _close_window_if_own()
                     return  # Volver al menú principal - salir completamente de la función
                 elif accion_seleccionada == "siguiente":
                     break  # Salir del bucle de intentos y continuar con siguiente absurdo

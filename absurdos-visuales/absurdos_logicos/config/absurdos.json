@@ -74,11 +74,11 @@
     },
     {
       "id": 10,
-      "imagen": "pecera-sin-agua.png",
-      "descripcion": "Aquí hay una pecera sin agua",
-      "objeto": "pecera",
-      "propiedad_incorrecta": "sin agua",
-      "propiedades_correctas": ["con agua", "llena de agua"]
+      "imagen": "Pez-volador.png",
+      "descripcion": "Aquí hay un pez volador",
+      "objeto": "pez",
+      "propiedad_incorrecta": "volador",
+      "propiedades_correctas": ["nadando", "en el agua"]
     },
     {
       "id": 11,

@@ -1,0 +1,63 @@
+%% Juego de Clasificación — Diagrama de componentes (dependencias)
+%% Abrir con extensión Mermaid o https://mermaid.live
+%%
+%% REGLA: En mermaid.live va UN SOLO diagrama por cuadro de texto.
+%% NO pegues este archivo junto con clasificacion_flujo_logico.mmd (dos "flowchart" = error).
+
+flowchart TB
+    subgraph EXT["Capa externa"]
+        KINECT["Kinect / OpenNI2<br/>streams RGB + profundidad"]
+        JSON_CFG["src/config/<br/>ultima_configuracion_coordenadas.json"]
+        DMAX["src/config/dmax_map.txt<br/>vía calibration"]
+        SND["sounds/<br/>incorrect.mp3, victory.mp3"]
+    end
+
+    subgraph MENU["Orquestación — menu.py"]
+        M_MAIN["mostrar_menu_juegos()<br/>carga JSON + load_and_validate_dmax_map()<br/>pasa coordenadas, dmax, dmin"]
+        M_NIV["Tarjeta Clasificación →<br/>mostrar_seleccion_niveles_clasificacion(...)"]
+        M_AUX["seleccionar_opciones_clasificacion()<br/>modo + tipo piezas → juego_clasificacion()<br/>(definida en menu; flujo alternativo)"]
+    end
+
+    subgraph FEAT["Feature src/features/clasificacion/"]
+        LEV["levels.py<br/>UI niveles, táctil, confetti, TTS,<br/>escala a videobeam"]
+        GAME["game.py<br/>juego_clasificacion()<br/>bucle principal del juego"]
+    end
+
+    subgraph CORE["Núcleo src/core/"]
+        CAL["calibration.py<br/>load_and_validate_dmax_map"]
+        DET["detection.py<br/>detect_color_and_shape"]
+        FU["font_utils.py<br/>put_text_ubuntu"]
+    end
+
+    subgraph COMP["UI y efectos compartidos"]
+        BTN["src/components/<br/>botones rectangulares"]
+        CF["src/features/confetti<br/>ConfettiSystem"]
+    end
+
+    subgraph ROOT["Raíz del proyecto"]
+        DL["detection_logic.py<br/>ObjectDetector, efectos"]
+    end
+
+    M_MAIN --> M_NIV
+    M_MAIN -.-> M_AUX
+    M_AUX -.->|invoca| GAME
+
+    M_MAIN --> KINECT
+    M_NIV --> KINECT
+    GAME --> KINECT
+
+    M_MAIN --> JSON_CFG
+    M_MAIN --> CAL
+    CAL --> DMAX
+
+    M_NIV --> LEV
+    LEV --> DL
+    LEV --> FU
+    LEV --> BTN
+    LEV --> CF
+
+    GAME --> JSON_CFG
+    GAME --> CAL
+    GAME --> DET
+    GAME --> FU
+    GAME --> SND

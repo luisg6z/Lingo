@@ -1,0 +1,49 @@
+%% Juego de Clasificación — Flujo lógico de juego_clasificacion() (game.py)
+%%
+%% REGLA: En mermaid.live va UN SOLO diagrama por cuadro. NO lo combines con
+%% clasificacion_componentes.mmd: dos líneas "flowchart TB/TD" en el mismo pegado = error.
+%%
+%% Puedes pegar todo este archivo (comentarios %% incluidos) o solo desde flowchart TD hasta el final.
+%% No uses | dentro del texto de un nodo; Mermaid lo reserva para etiquetas de flechas.
+
+flowchart TD
+    A(["Entrada: device, modo figuras o colores, piezas_fisicas, num_piezas"]) --> B["Cargar coordenadas JSON: ROI mundo y viewport videobeam"]
+    B --> C["load_and_validate_dmax_map: dmax y dmin para rango de toque"]
+    C --> D{dmax valido?}
+    D -->|No| Z1([Salir - calibracion invalida])
+    D -->|Si| E["Inicializar pygame, pantalla 1280x800, dos ovalos zona 1 y 2"]
+    E --> F{piezas fisicas?}
+    F -->|No virtuales| G["generar_figuras: 2 tipos de figura o 2 colores, sin solaparse"]
+    F -->|Si fisicas| H["figuras_a_dibujar vacio; se llena por vision cada frame"]
+    G --> I["Abrir streams RGB y depth"]
+    H --> I
+
+    I --> J{Bucle principal}
+    J --> K["Leer RGB y depth, recortar y voltear ROI"]
+    K --> L["Mascara de toque: profundidad entre dmin y dmax, blur, umbral, morfologia"]
+    L --> M["Contornos a puntos tactiles en viewport"]
+    M --> N{piezas fisicas?}
+    N -->|No| O["Arrastrar figuras virtuales con el dedo, evitar colisiones"]
+    N -->|Si| P["detect_color_and_shape en BGR; centro a viewport; actualizar figuras_a_dibujar"]
+    O --> Q["Dibujar videobeam: ovalos, figuras, equis si error"]
+    P --> Q
+
+    BB["Mostrar ventanas: Mascara, Clasificacion fullscreen, Deteccion si fisicas"]
+    Q --> R{waitKey tecla}
+    R -->|q| Z2([Salir])
+    R -->|h| S["Alternar visibilidad ovalos"]
+    R -->|v| T["Verificar clasificacion"]
+    R -->|otras| BB
+    S --> BB
+
+    T --> U["Clasificar: dentro ovalo 1, ovalo 2 o fuera"]
+    U --> V{Alguna fuera de ambos ovalos?}
+    V -->|Si| W["incorrect.mp3 y marcar figuras"]
+    V -->|No| X2["Por cada ovalo: misma figura o mismo color dominante"]
+    X2 --> Y{Algun error dentro de un ovalo?}
+    Y -->|Si| W
+    Y -->|No| AA["victory.mp3, esperar y terminar"]
+    W --> BB
+    AA --> Z2
+
+    BB --> J

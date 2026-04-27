@@ -27,18 +27,31 @@ Notas:
 
 import json
 import re
+import os
 import speech_recognition as sr
 import threading
 import time
 import sys
+from dotenv import load_dotenv
+from ollama import Client
 
-# Intentar importar ollama
-try:
-    import ollama
-except ImportError:
-    print("Error: ollama no está instalado. Instálalo con: pip install ollama")
-    print("Asegúrate de que Ollama esté instalado y corriendo en tu sistema.")
-    sys.exit(1)
+
+def _get_ollama_client():
+    """
+    Crea un cliente de Ollama usando OLLAMA_HOST y OLLAMA_API_KEY
+    para conectarse al servicio en la nube.
+    """
+    load_dotenv()
+    host = os.environ.get("OLLAMA_HOST")
+    api_key = os.environ.get("OLLAMA_API_KEY")
+    if not host or not api_key:
+        print("Error: OLLAMA_HOST u OLLAMA_API_KEY no están configuradas en el entorno.")
+        return None
+    try:
+        return Client(host=host, headers={"Authorization": "Bearer " + api_key})
+    except Exception as e:
+        print(f"Error al crear el cliente de Ollama: {e}")
+        return None
 
 
 class SpeechRecorder:
@@ -58,12 +71,20 @@ class SpeechRecorder:
     def initialize_microphone(self):
         """Inicializa el micrófono"""
         try:
-            self.microphone = sr.Microphone()
-            print("Micrófono inicializado correctamente.")
+            # Igual que en juego-historia: usar index configurable con default=2.
+            device_index = int(os.environ.get("LINGO_MIC_DEVICE_INDEX", "2"))
+            self.microphone = sr.Microphone(device_index=device_index)
+            print(f"Micrófono inicializado correctamente (device_index={device_index}).")
             return True
         except Exception as e:
-            print(f"Error al acceder al micrófono: {e}")
-            return False
+            print(f"Advertencia: no se pudo abrir micrófono index=2 ({e}). Probando dispositivo por defecto...")
+            try:
+                self.microphone = sr.Microphone()
+                print("Micrófono por defecto inicializado correctamente.")
+                return True
+            except Exception as e2:
+                print(f"Error al acceder al micrófono: {e2}")
+                return False
     
     def adjust_for_ambient_noise(self, duration=1):
         """Ajusta el reconocedor para el ruido ambiente"""
@@ -196,9 +217,9 @@ class SpeechRecorder:
 class OllamaVerifier:
     """Clase para verificar texto/historias usando Ollama"""
 
-    def __init__(self, model="deepseek-r1"):
+    def __init__(self, model="gemini-3-flash-preview:cloud"):
         self.model = model
-        self.base_url = "http://localhost:11434"  # URL por defecto de Ollama
+        self.client = _get_ollama_client()
 
     def _build_story_prompt(self, sentence, subjects_str, actions_str, places_str):
         return f"""Eres un profesor de español para niños de 7 años. Tu objetivo es evaluar historias cortas de forma alentadora y flexible.
@@ -243,10 +264,17 @@ Los consejos deben ser dirigidos al niño, no a un profesor."""
         places_str = ", ".join(places) if places else "(ninguno)"
         prompt = self._build_story_prompt(sentence, subjects_str, actions_str, places_str)
         try:
+            if self.client is None:
+                return "Error: no se pudo crear el cliente de Ollama online."
             print(f"Enviando historia a Ollama (modelo: {self.model})...")
-            response = ollama.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
-            content = (response or {}).get("message") or {}
-            content = (content.get("content") or "").strip()
+            content_parts = []
+            for part in self.client.chat(self.model, messages=[{"role": "user", "content": prompt}], stream=True):
+                if part.get("error"):
+                    return f"Error de Ollama en stream: {part.get('error')}"
+                msg = (part.get("message") or {}).get("content")
+                if msg:
+                    content_parts.append(msg)
+            content = "".join(content_parts).strip()
             if not content:
                 return "Error: No se recibió respuesta de Ollama."
             content = re.sub(r"^```\w*\s*", "", content)
@@ -288,24 +316,57 @@ Los consejos deben ser dirigidos al niño, no a un profesor."""
         # Comportamiento anterior: prompt genérico
         if not text:
             return "Error: No se proporcionó texto para verificar."
-        prompt = f"""Eres un experto en gramática y redacción en español, 
-        con experiencia en pedagogía y educación. 
-Analiza la siguiente oración u oraciones y verifica:
-1. Si tiene sentido semántico
-2. Si está bien escrita (gramática, ortografía, sintaxis)
-3. Si hay errores, indícalos
+        prompt = f"""
+Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
 
-Oración a verificar: "{text}"
+CRITERIOS DE EVALUACIÓN:
 
-Proporciona una respuesta clara y concisa en español indicando:
-- Si la oración tiene sentido
-- Si está bien escrita
-- Si hay errores, cuáles son y cómo corregirlos"""
+1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
+2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
+3. PARTÍCULAS DE ENLACE: Debe usar al menos uno (y, entonces, luego, porque, pero, etc.).
+4. ELEMENTOS: DEBE incluir (ya sean variaciones, conjugaciones, etc.) OBLIGATORIAMENTE:
+   - Personajes (sujetos): {subjects}
+   - Acciones: {actions}
+   - Lugares: {places}
+   - ACCIONES (estricto): No aceptes sinónimos ni descripciones de la acción. La historia debe reflejar la misma acción pedida con su verbo (conjugaciones, gerundio, infinitivo, etc.). 
+   Ejemplo: si la acción es "TRABAJAR", frases como "atender pacientes" o "hacer la oficina" son INCORRECTAS para cumplir la acción; debe decir explícitamente "trabaja", "trabajó", "trabajando", etc. 
+   Marca "correct": false y da un tip si solo usan equivalentes descriptivos en lugar del verbo de la acción pedida.
+5. CIERRE/CONCLUSIÓN: La historia no puede quedar a medias; debe tener un sentido de finalidad. Se aceptan finales cerrados (ej: "y se durmió")
+ o finales de suspenso/abiertos (ej: "¡y de repente algo se movió en la oscuridad!"), siempre que la oración sea gramaticalmente completa.
+6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
+
+INSTRUCCIONES PARA LOS "TIPS":
+
+- Sé breve y muy amable.
+- Si hay un error, usa el formato: "Dijiste '[error]', pero quedaría mejor así: '[corrección]'".
+- Si FALTA un elemento ya sea sujeto, acción o lugar, has un tip para indicarle que falta.
+- Si la historia es perfecta, usa el primer tip para felicitar un punto específico (ej: "¡Me encantó cómo usaste el conector 'porque'!") y deja el resto del array vacío.
+
+ANÁLISIS PARA "parts":
+- "subjects": fragmentos EXACTOS del texto del niño que correspondan a los sujetos dados.
+- "actions": fragmentos EXACTOS del texto del niño que correspondan a las acciones dadas.
+- "places": fragmentos EXACTOS del texto del niño que correspondan a los lugares dados.
+
+Historia del niño: "{text}"
+
+FORMATO DE RESPUESTA (SOLO JSON EN UNA LÍNEA, sin otro texto):
+
+{{"correct": true o false, "tips": ["consejo1", "consejo2"], "parts": {{"subjects": ["fragmento1"], "actions": ["fragmento2"], "places": ["fragmento3"]}}}}
+"""
         try:
+            if self.client is None:
+                return "Error: no se pudo crear el cliente de Ollama online."
             print(f"Enviando texto a Ollama (modelo: {self.model})...")
-            response = ollama.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
-            if response and "message" in response and "content" in response["message"]:
-                return response["message"]["content"]
+            content_parts = []
+            for part in self.client.chat(self.model, messages=[{"role": "user", "content": prompt}], stream=True):
+                if part.get("error"):
+                    return f"Error de Ollama en stream: {part.get('error')}"
+                msg = (part.get("message") or {}).get("content")
+                if msg:
+                    content_parts.append(msg)
+            content = "".join(content_parts).strip()
+            if content:
+                return content
             return "Error: No se recibió una respuesta válida de Ollama."
         except Exception as e:
             return f"Error al comunicarse con Ollama: {e}\nAsegúrate de que Ollama esté instalado y corriendo."
@@ -330,7 +391,7 @@ def main():
         print("Advertencia: No se pudo ajustar el ruido ambiente.")
     
     # Inicializar el verificador de Ollama
-    verifier = OllamaVerifier(model="deepseek-r1")
+    verifier = OllamaVerifier(model="gemini-3-flash-preview:cloud")
 
     def _get_story_params():
         """Opcional: pedir personajes, acciones y lugares para el prompt de historia."""

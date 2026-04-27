@@ -31,4 +31,5 @@ dependencies = [
     "ultralytics",
     "ollama>=0.6.1",
     "python-dotenv>=1.2.2",
+    "gtts>=2.5.4",
 ]
