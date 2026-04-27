@@ -259,6 +259,71 @@ def build_historia_voice_prep_cards(
     return card_positions
 
 
+# ── Difficulty badge ────────────────────────────────────────────────
+
+_DIFFICULTY_META = {
+    1: {"label": "Facil",      "stars": 1, "bg_color": (80, 190, 80),   "text_color": (255, 255, 255)},
+    2: {"label": "Intermedio",  "stars": 2, "bg_color": (60, 160, 240),  "text_color": (255, 255, 255)},
+    3: {"label": "Dificil",     "stars": 3, "bg_color": (120, 80, 220),  "text_color": (255, 255, 255)},
+}
+
+
+def draw_difficulty_badge(screen, difficulty_level, view_width=1280):
+    """
+    Draw a small coloured pill badge in the top-left area showing the
+    current difficulty level (stars + label).
+
+    Args:
+        screen: numpy image (BGR)
+        difficulty_level: 1, 2 or 3
+        view_width: viewport width (default 1280)
+    """
+    if difficulty_level not in _DIFFICULTY_META:
+        return
+
+    meta = _DIFFICULTY_META[difficulty_level]
+    stars_text = "\u2605" * meta["stars"]  # ★
+    label = f" {stars_text}  {meta['label']} "
+    bg = meta["bg_color"]
+    fg = meta["text_color"]
+
+    font = cv2.FONT_HERSHEY_DUPLEX
+    fs = 0.7
+    th = 2
+    (tw, th_px), baseline = cv2.getTextSize(label, font, fs, th)
+
+    badge_x = 15
+    badge_y = 148
+    pad_x = 10
+    pad_y = 6
+    badge_w = tw + 2 * pad_x
+    badge_h = th_px + baseline + 2 * pad_y
+
+    # Rounded-rect background (simulated with filled rect + circles at corners)
+    x1, y1 = badge_x, badge_y
+    x2, y2 = badge_x + badge_w, badge_y + badge_h
+    radius = min(12, badge_h // 2)
+
+    # Draw filled rounded rectangle
+    cv2.rectangle(screen, (x1 + radius, y1), (x2 - radius, y2), bg, -1)
+    cv2.rectangle(screen, (x1, y1 + radius), (x2, y2 - radius), bg, -1)
+    cv2.circle(screen, (x1 + radius, y1 + radius), radius, bg, -1)
+    cv2.circle(screen, (x2 - radius, y1 + radius), radius, bg, -1)
+    cv2.circle(screen, (x1 + radius, y2 - radius), radius, bg, -1)
+    cv2.circle(screen, (x2 - radius, y2 - radius), radius, bg, -1)
+
+    # Border
+    cv2.rectangle(screen, (x1 + radius, y1), (x2 - radius, y1 + 1), (255, 255, 255), 1)
+    cv2.rectangle(screen, (x1 + radius, y2 - 1), (x2 - radius, y2), (255, 255, 255), 1)
+    cv2.rectangle(screen, (x1, y1 + radius), (x1 + 1, y2 - radius), (255, 255, 255), 1)
+    cv2.rectangle(screen, (x2 - 1, y1 + radius), (x2, y2 - radius), (255, 255, 255), 1)
+
+    # Text
+    text_x = badge_x + pad_x
+    text_y = badge_y + pad_y + th_px
+    cv2.putText(screen, label, (text_x, text_y), font, fs, fg, th, cv2.LINE_AA)
+
+
 def draw_historia_voice_prep_cards(screen, card_positions):
     """Dibuja cards con imagen o color de respaldo (misma idea que vista final)."""
     for _nombre, pos in card_positions.items():

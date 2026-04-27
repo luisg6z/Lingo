@@ -21,10 +21,11 @@ from .helpers import (
     HISTORIA_RESUMEN_CARD_WIDTH,
     HISTORIA_RESUMEN_CARDS_START_Y,
     historia_hablar_button_layout,
+    draw_difficulty_badge,
 )
 from .voice_flow import run_historia_voice_flow
 
-def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados, existing_window_name=None):
+def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func, sujetos_seleccionados, acciones_seleccionadas, lugares_seleccionados, existing_window_name=None, difficulty=3):
     """
     Muestra la vista final con las 4 cards seleccionadas (2 sujetos, 1 acción, 1 lugar).
     
@@ -593,6 +594,7 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
                     close_card_detection_x_final, close_card_detection_y_final,
                     close_card_detection_w_final, close_card_detection_h_final,
                     VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT,
+                    difficulty=difficulty,
                 )
                 # Si retorna "RESTART", reiniciar streams y continuar en el bucle para volver a la vista final
                 if ret == "RESTART":
@@ -647,6 +649,7 @@ def mostrar_vista_final(device, coordenadas, dmax_map, dmin_map, draw_logo_func,
             bold=True,
             shadow=True
         )
+        draw_difficulty_badge(temp_screen, difficulty, view_width)
         final_screen_scaled = scale_to_videobeam(temp_screen)
         cv2.imshow(window_name, final_screen_scaled)
         

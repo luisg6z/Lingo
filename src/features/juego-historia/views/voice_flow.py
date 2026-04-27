@@ -41,7 +41,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                              draw_close_card_final_fn, detectar_close_card_touch_final_fn,
                              close_card_detection_x_final, close_card_detection_y_final,
                              close_card_detection_w_final, close_card_detection_h_final,
-                             VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT):
+                             VIDEOBEAM_WIDTH, VIDEOBEAM_HEIGHT, difficulty=3):
     """
     Run listen -> transcribe -> thinking -> Ollama -> result screen. Returns "MENU" when user presses X on result.
     """
@@ -316,6 +316,7 @@ def run_historia_voice_flow(window_name, view_width, view_height, scale_to_video
                 actions=acciones_seleccionadas,
                 places=lugares_seleccionados,
                 model="gemini-3-flash-preview:cloud",
+                difficulty=difficulty,
             )
         done_holder[0] = True
     thr = threading.Thread(target=_ollama_thread, daemon=True)

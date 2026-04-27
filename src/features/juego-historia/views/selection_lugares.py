@@ -16,11 +16,11 @@ if _project_root not in sys.path:
 
 from src.core.font_utils import put_text_ubuntu
 
-from .helpers import historia_tts_speak
+from .helpers import historia_tts_speak, draw_difficulty_badge
 from .vista_final import mostrar_vista_final
 
 
-def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
+def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None, difficulty=3):
     """
     Muestra la vista de selección de lugares con 6 cards.
     
@@ -718,6 +718,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
             draw_close_card_lugares(temp_screen, elevated=False)
             is_blocked = len(lugares_seleccionados) != 1
             draw_jugar_button(temp_screen, elevated=False, blocked=is_blocked)
+            draw_difficulty_badge(temp_screen, difficulty, view_width)
             lugares_screen_scaled = scale_to_videobeam(temp_screen)
             cv2.imshow(window_name, lugares_screen_scaled)
             key = cv2.waitKey(1) & 0xFF
@@ -908,6 +909,7 @@ def mostrar_seleccion_lugares(device, coordenadas, dmax_map, dmin_map, draw_logo
         # Bloquear botón si no hay exactamente 1 lugar seleccionado
         is_blocked = len(lugares_seleccionados) != 1
         draw_jugar_button(temp_screen, elevated=jugar_elevated, blocked=is_blocked)
+        draw_difficulty_badge(temp_screen, difficulty, view_width)
         lugares_screen_scaled = scale_to_videobeam(temp_screen)
         cv2.imshow(window_name, lugares_screen_scaled)
         

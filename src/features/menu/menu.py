@@ -32,18 +32,24 @@ sys.modules["historia_selection"] = historia_selection_module
 historia_spec.loader.exec_module(historia_selection_module)
 mostrar_seleccion_escenarios_historia = historia_selection_module.mostrar_seleccion_escenarios_historia
 
-# Cargar mostrar_seleccion_historias desde juego-historia/views (vista de selección de historias con sujetos y botón Siguiente)
-_mostrar_seleccion_historias_func = None
-def _get_mostrar_seleccion_historias():
-    global _mostrar_seleccion_historias_func
-    if _mostrar_seleccion_historias_func is None:
+# Cargar vistas de juego-historia (lazy load para evitar import circular con módulo con guión)
+_juego_historia_views_mod = None
+def _get_juego_historia_views():
+    global _juego_historia_views_mod
+    if _juego_historia_views_mod is None:
         views_init_path = os.path.join(project_root, "src", "features", "juego-historia", "views", "__init__.py")
         views_spec = importlib.util.spec_from_file_location("juego_historia_views", views_init_path)
         views_mod = importlib.util.module_from_spec(views_spec)
         sys.modules["juego_historia_views"] = views_mod
         views_spec.loader.exec_module(views_mod)
-        _mostrar_seleccion_historias_func = views_mod.mostrar_seleccion_historias
-    return _mostrar_seleccion_historias_func
+        _juego_historia_views_mod = views_mod
+    return _juego_historia_views_mod
+
+def _get_mostrar_seleccion_dificultad():
+    return _get_juego_historia_views().mostrar_seleccion_dificultad
+
+def _get_mostrar_seleccion_historias():
+    return _get_juego_historia_views().mostrar_seleccion_historias
 
 # Import absurdos-visuales feature (folder has hyphen, need to use importlib)
 import importlib.util
@@ -862,26 +868,37 @@ def mostrar_menu_juegos(device, sentence_transformer_model=None):
                             frame_count = 0
                             juego_seleccionado_flag = True  # Establecer flag para salir del bucle de detección
                             break  # Salir del bucle de detección de toques para mostrar el menú principal
-                        # Si es Historias, mostrar vista de selección de historias (sujetos, acciones, lugares, botón Siguiente)
+                        # Si es Historias, primero seleccionar dificultad, luego historias
                         elif juego_seleccionado == "Historias":
-                            print(f"Redirigiendo a selección de historias para: {juego_seleccionado}")
+                            print(f"Redirigiendo a selección de dificultad para: {juego_seleccionado}")
                             try:
-                                resultado_seleccion = _get_mostrar_seleccion_historias()(
+                                # 1) Selección de dificultad
+                                difficulty = _get_mostrar_seleccion_dificultad()(
                                     device, coordenadas, dmax_map, dmin_map, draw_logo,
                                     existing_window_name="Menú de Juegos"
                                 )
-                                if resultado_seleccion:
-                                    if isinstance(resultado_seleccion, dict):
-                                        sujetos_seleccionados = resultado_seleccion.get('sujetos', [])
-                                        acciones_seleccionadas = resultado_seleccion.get('acciones', [])
-                                        lugares_seleccionados = resultado_seleccion.get('lugares', [])
-                                        print(f"Sujetos seleccionados: {sujetos_seleccionados}")
-                                        print(f"Acciones seleccionadas: {acciones_seleccionadas}")
-                                        print(f"Lugares seleccionados: {lugares_seleccionados}")
-                                    elif isinstance(resultado_seleccion, list):
-                                        print(f"Sujetos seleccionados: {resultado_seleccion}")
+                                if difficulty is None:
+                                    # Canceló → volver al menú
+                                    pass
+                                else:
+                                    # 2) Selección de historias (con dificultad)
+                                    resultado_seleccion = _get_mostrar_seleccion_historias()(
+                                        device, coordenadas, dmax_map, dmin_map, draw_logo,
+                                        existing_window_name="Menú de Juegos",
+                                        difficulty=difficulty
+                                    )
+                                    if resultado_seleccion:
+                                        if isinstance(resultado_seleccion, dict):
+                                            sujetos_seleccionados = resultado_seleccion.get('sujetos', [])
+                                            acciones_seleccionadas = resultado_seleccion.get('acciones', [])
+                                            lugares_seleccionados = resultado_seleccion.get('lugares', [])
+                                            print(f"Sujetos seleccionados: {sujetos_seleccionados}")
+                                            print(f"Acciones seleccionadas: {acciones_seleccionadas}")
+                                            print(f"Lugares seleccionados: {lugares_seleccionados}")
+                                        elif isinstance(resultado_seleccion, list):
+                                            print(f"Sujetos seleccionados: {resultado_seleccion}")
                             except Exception as e:
-                                print(f"Error al llamar a mostrar_seleccion_historias: {e}")
+                                print(f"Error al llamar a selección de historia: {e}")
                                 import traceback
                                 traceback.print_exc()
                             

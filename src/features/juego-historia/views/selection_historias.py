@@ -16,12 +16,12 @@ if _project_root not in sys.path:
 
 from src.core.font_utils import put_text_ubuntu
 
-from .helpers import historia_tts_speak
+from .helpers import historia_tts_speak, draw_difficulty_badge
 from .selection_acciones import mostrar_seleccion_acciones
 from .vista_final import mostrar_vista_final
 
 
-def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None):
+def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_logo_func, existing_window_name=None, difficulty=3):
     """
     Muestra la vista de selección de historias con 6 cards.
     
@@ -554,6 +554,7 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
     draw_sujetos_seleccionados(historias_screen, 0)  # Inicialmente 0 seleccionados
     draw_close_card_historias(historias_screen, elevated=False)
     draw_siguiente_button(historias_screen, elevated=False, blocked=True)  # Bloqueado inicialmente
+    draw_difficulty_badge(historias_screen, difficulty, view_width)
     
     # Configurar ventana
     window_name = existing_window_name if existing_window_name else "Selección de Historias"
@@ -653,6 +654,7 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
             # Bloquear botón si hay menos de 1 o más de 2 selecciones
             is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
             draw_siguiente_button(temp_screen, elevated=False, blocked=is_blocked)
+            draw_difficulty_badge(temp_screen, difficulty, view_width)
             historias_screen_scaled = scale_to_videobeam(temp_screen)
             cv2.imshow(window_name, historias_screen_scaled)
             key = cv2.waitKey(1) & 0xFF
@@ -732,6 +734,7 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
                 # Bloquear botón si hay menos de 1 o más de 2 selecciones
                 is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
                 draw_siguiente_button(temp_screen, elevated=False, blocked=is_blocked)
+                draw_difficulty_badge(temp_screen, difficulty, view_width)
                 temp_screen_scaled = scale_to_videobeam(temp_screen)
                 cv2.imshow(window_name, temp_screen_scaled)
                 cv2.waitKey(200)
@@ -801,7 +804,8 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
                 # Llamar a la vista de selección de acciones
                 acciones_seleccionadas = mostrar_seleccion_acciones(
                     device, coordenadas, dmax_map, dmin_map, draw_logo_func,
-                    existing_window_name=window_name
+                    existing_window_name=window_name,
+                    difficulty=difficulty
                 )
                 
                 # Si se canceló o se presionó la X (retornó None o "MENU")
@@ -845,7 +849,8 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
                             historias_seleccionadas,
                             acciones_seleccionadas.get('acciones', []),
                             acciones_seleccionadas.get('lugares', []),
-                            existing_window_name=window_name
+                            existing_window_name=window_name,
+                            difficulty=difficulty
                         )
                         
                         # Si se canceló desde la vista final, retornar "MENU" o None
@@ -901,6 +906,7 @@ def mostrar_seleccion_historias(device, coordenadas, dmax_map, dmin_map, draw_lo
         # Bloquear botón si hay menos de 1 o más de 2 sujetos seleccionados
         is_blocked = len(historias_seleccionadas) < 1 or len(historias_seleccionadas) > 2
         draw_siguiente_button(temp_screen, elevated=siguiente_elevated, blocked=is_blocked)
+        draw_difficulty_badge(temp_screen, difficulty, view_width)
         historias_screen_scaled = scale_to_videobeam(temp_screen)
         cv2.imshow(window_name, historias_screen_scaled)
         

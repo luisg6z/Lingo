@@ -233,7 +233,7 @@ def _get_ollama_client():
         return None
 
 
-def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="gemini-3-flash-preview"):
+def verify_story_ollama(sentence, subjects=None, actions=None, places=None, model="gemini-3-flash-preview", difficulty=3):
     """
     Pide a Ollama que valide la historia usando los personajes, acciones y lugares dados.
     Público objetivo: niños de ~7 años. La respuesta debe ser SOLO JSON.
@@ -244,6 +244,7 @@ def verify_story_ollama(sentence, subjects=None, actions=None, places=None, mode
         actions: Lista de nombres de acciones (ej. ["Dar"]).
         places: Lista de nombres de lugares (ej. ["Casa"]).
         model: Nombre del modelo de Ollama.
+        difficulty: Nivel de dificultad (1=Fácil, 2=Intermedio, 3=Difícil).
 
     Returns:
         dict: {
@@ -280,11 +281,43 @@ def verify_story_ollama(sentence, subjects=None, actions=None, places=None, mode
     sentence_clean = (sentence or "").strip().replace("\r", " ").replace("\n", " ")
     sentence_clean = sentence_clean.replace('"', "'")[:2000]  # límite razonable de longitud
 
-    prompt = f"""
-Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
-
-CRITERIOS DE EVALUACIÓN:
-
+    # ── Construir criterios según dificultad ────────────────────────────
+    if difficulty == 1:
+        # Fácil: solo 2 de 3 categorías requeridas, sin partículas de enlace, sin cierre obligatorio
+        criteria_block = f"""
+1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
+2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
+3. NO es obligatorio usar partículas de enlace (y, entonces, luego, porque, pero, etc.).
+4. ELEMENTOS: Los elementos disponibles son:
+   - Personajes (sujetos): {subjects_str}
+   - Acciones: {actions_str}
+   - Lugares: {places_str}
+   Solo se requiere que la historia incluya al menos 2 de estas 3 categorías (sujeto, acción, lugar). La tercera categoría es opcional.
+   - ACCIONES (estricto): No aceptes sinónimos ni descripciones de la acción. La historia debe reflejar la misma acción pedida con su verbo (conjugaciones, gerundio, infinitivo, etc.). 
+   Ejemplo: si la acción es "TRABAJAR", frases como "atender pacientes" o "hacer la oficina" son INCORRECTAS para cumplir la acción; debe decir explícitamente "trabaja", "trabajó", "trabajando", etc. 
+   Marca "correct": false y da un tip si solo usan equivalentes descriptivos en lugar del verbo de la acción pedida.
+5. NO es obligatorio un cierre o conclusión formal. Basta con que la oración sea gramaticalmente completa.
+6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
+6b. MAYÚSCULAS: No corrijas ni des tips sobre mayúsculas."""
+    elif difficulty == 2:
+        # Intermedio: todas las 3 categorías requeridas, sin partículas de enlace, sin cierre obligatorio
+        criteria_block = f"""
+1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
+2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
+3. NO es obligatorio usar partículas de enlace (y, entonces, luego, porque, pero, etc.).
+4. ELEMENTOS: DEBE incluir (ya sean variaciones, conjugaciones, etc.) OBLIGATORIAMENTE:
+   - Personajes (sujetos): {subjects_str}
+   - Acciones: {actions_str}
+   - Lugares: {places_str}
+   - ACCIONES (estricto): No aceptes sinónimos ni descripciones de la acción. La historia debe reflejar la misma acción pedida con su verbo (conjugaciones, gerundio, infinitivo, etc.). 
+   Ejemplo: si la acción es "TRABAJAR", frases como "atender pacientes" o "hacer la oficina" son INCORRECTAS para cumplir la acción; debe decir explícitamente "trabaja", "trabajó", "trabajando", etc. 
+   Marca "correct": false y da un tip si solo usan equivalentes descriptivos en lugar del verbo de la acción pedida.
+5. NO es obligatorio un cierre o conclusión formal. Basta con que la oración sea gramaticalmente completa.
+6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
+6b. MAYÚSCULAS: No corrijas ni des tips sobre mayúsculas."""
+    else:
+        # Difícil (default, difficulty == 3): evaluación completa original
+        criteria_block = f"""
 1. SENTIDO GRAMATICAL CORRECTO: ¿Se entiende la idea? Debe haber coherencia básica.
 2. TIEMPOS VERBALES CORRECTOS: Uso correcto de presente, pasado o futuro.
 3. PARTÍCULAS DE ENLACE: Debe usar al menos uno (y, entonces, luego, porque, pero, etc.).
@@ -299,7 +332,13 @@ CRITERIOS DE EVALUACIÓN:
  o finales de suspenso/abiertos (ej: "¡y de repente algo se movió en la oscuridad!"), siempre que la oración sea gramaticalmente completa.
  También cuenta como cierre VÁLIDO una subordinada de propósito con "para que" que exprese claramente para qué o con qué intención ocurre la acción, aunque no narre un desenlace adicional: eso ya cierra la intención de la historia. No marques "incorrecto" solo porque esperabas otra frase de cierre si ya hay una oración completa con "para que" bien formada.
 6. Las tildes no son obligatorias, así que no hagas corrección de ellas.
-6b. MAYÚSCULAS: No corrijas ni des tips sobre mayúsculas. 
+6b. MAYÚSCULAS: No corrijas ni des tips sobre mayúsculas."""
+
+    prompt = f"""
+Eres un profesor de español para niños de 7 años. Evalúa historias cortas de forma alentadora según los criterios siguientes.
+
+CRITERIOS DE EVALUACIÓN:
+{criteria_block}
 7. IDIOMA: Si la historia del niño está mayormente en un idioma que NO sea español, NO evalúes gramática, elementos ni el resto de criterios. Responde con "correct": false, "parts" vacíos (subjects, actions, places como listas vacías) y en "tips" pon ÚNICAMENTE un solo consejo, exactamente este texto y ningún otro: "Recuerda que debe ser en español para que todos podemos entenderlo". No añadas más tips ni correcciones en ese caso.
 
 INSTRUCCIONES PARA LOS "TIPS":
